@@ -1,0 +1,34 @@
+[package]
+name = "courselib"
+version = "0.1.0"
+description = "Local-first personal knowledge library"
+authors = ["CourseLib"]
+edition = "2021"
+rust-version = "1.89"
+
+[[bin]]
+name = "courselib"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.4.1", features = [] }
+
+[dependencies]
+anyhow = "1.0.99"
+chrono = { version = "0.4.41", features = ["serde"] }
+comrak = "0.41.0"
+dirs = "6.0.0"
+git2 = "0.20.2"
+notify = "8.2.0"
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+serde_yaml = "0.9.34"
+sha2 = "0.10.9"
+slug = "0.1.6"
+tauri = { version = "2.8.5", features = [] }
+tauri-plugin-dialog = "2.4.0"
+thiserror = "2.0.16"
+uuid = { version = "1.18.0", features = ["v4", "serde"] }
+walkdir = "2.5.0"
