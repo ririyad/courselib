@@ -1,16 +1,28 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
-  import { getAppStatus, reindexVault, setVaultPath, type AppStatus, type ReindexSummary } from '$lib/api';
+  import CourseCard from '$lib/components/CourseCard.svelte';
+  import {
+    getAppStatus,
+    listCourses,
+    reindexVault,
+    setVaultPath,
+    type AppStatus,
+    type CourseListItem,
+    type ReindexSummary
+  } from '$lib/api';
 
   let status = $state<AppStatus | null>(null);
+  let courses = $state<CourseListItem[]>([]);
   let reindexSummary = $state<ReindexSummary | null>(null);
   let error = $state<string | null>(null);
   let choosing = $state(false);
   let reindexing = $state(false);
+  let loadingCourses = $state(true);
 
   onMount(async () => {
     await refreshStatus();
+    await refreshCourses();
   });
 
   async function refreshStatus() {
@@ -22,6 +34,18 @@
     }
   }
 
+  async function refreshCourses() {
+    loadingCourses = true;
+    try {
+      courses = await listCourses();
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      loadingCourses = false;
+    }
+  }
+
   async function chooseVault() {
     choosing = true;
     try {
@@ -29,6 +53,7 @@
       if (typeof selected === 'string') {
         status = await setVaultPath(selected);
         reindexSummary = null;
+        await refreshCourses();
       }
       error = null;
     } catch (err) {
@@ -42,6 +67,7 @@
     reindexing = true;
     try {
       reindexSummary = await reindexVault();
+      await refreshCourses();
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -51,57 +77,65 @@
   }
 </script>
 
-<main class="shell">
-  <section class="hero">
-    <p class="eyebrow">CourseLib</p>
-    <h1>Local-first personal knowledge library</h1>
+<main class="page">
+  <section class="hero library-hero">
+    <p class="eyebrow">CourseLib · Milestone 3</p>
+    <h1>Local-first course library</h1>
     <p class="lede">
-      Milestone 2 is wired: the app creates the vault, initializes Git metadata, applies the SQLite
-      schema, and can rebuild the disposable index from plain files on disk.
+      Import markdown, rebuild the SQLite index from disk, and open indexed courses for reading.
     </p>
-  </section>
-
-  <section class="card" aria-live="polite">
-    <h2>Vault Status</h2>
-    {#if error}
-      <p class="error">{error}</p>
-    {:else if status}
-      <dl>
-        <div>
-          <dt>Vault path</dt>
-          <dd>{status.vault_path}</dd>
-        </div>
-        <div>
-          <dt>Courses folder</dt>
-          <dd>{status.courses_dir_exists ? 'Ready' : 'Missing'}</dd>
-        </div>
-        <div>
-          <dt>Paths folder</dt>
-          <dd>{status.paths_dir_exists ? 'Ready' : 'Missing'}</dd>
-        </div>
-        <div>
-          <dt>Git metadata</dt>
-          <dd>{status.vault_git_initialized ? 'Initialized' : 'Missing'}</dd>
-        </div>
-      </dl>
-    {:else}
-      <p>Checking vault...</p>
-    {/if}
-
     <div class="actions">
-      <button type="button" onclick={chooseVault} disabled={choosing || reindexing}>
-        {choosing ? 'Choosing...' : 'Choose Vault Folder'}
-      </button>
+      <a class="button" href="/import">Import Course</a>
       <button type="button" class="secondary" onclick={runReindex} disabled={reindexing || choosing}>
         {reindexing ? 'Reindexing...' : 'Reindex Vault'}
       </button>
+      <button type="button" class="ghost" onclick={chooseVault} disabled={choosing || reindexing}>
+        {choosing ? 'Choosing...' : 'Choose Vault'}
+      </button>
     </div>
+  </section>
 
+  {#if error}
+    <p class="error">{error}</p>
+  {/if}
+
+  <section class="status-strip">
+    <div>
+      <span>Vault</span>
+      <strong>{status?.vault_path ?? 'Checking...'}</strong>
+    </div>
+    <div>
+      <span>Git</span>
+      <strong>{status?.vault_git_initialized ? 'Initialized' : 'Checking...'}</strong>
+    </div>
     {#if reindexSummary}
-      <p class="success">
-        Indexed {reindexSummary.courses} courses, {reindexSummary.sections} sections,
-        {reindexSummary.categories} categories, and {reindexSummary.paths} paths.
-      </p>
+      <div>
+        <span>Last reindex</span>
+        <strong>{reindexSummary.courses} courses · {reindexSummary.sections} sections</strong>
+      </div>
     {/if}
   </section>
+
+  <section class="section-header">
+    <div>
+      <p class="eyebrow">Library</p>
+      <h2>Your courses</h2>
+    </div>
+  </section>
+
+  {#if loadingCourses}
+    <p>Loading courses...</p>
+  {:else if courses.length}
+    <div class="course-grid">
+      {#each courses as course}
+        <CourseCard {course} />
+      {/each}
+    </div>
+  {:else}
+    <section class="empty-state">
+      <h2>No courses yet</h2>
+      <p>Import pasted markdown or a supported GitHub/GitLab/Codeberg link to create your first course.</p>
+      <a class="button" href="/import">Import your first course</a>
+    </section>
+  {/if}
 </main>

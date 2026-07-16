@@ -15,15 +15,23 @@ body {
   margin: 0;
 }
 
-button {
+a {
+  color: inherit;
+}
+
+button,
+.button {
   border: 0;
   border-radius: 999px;
   background: #1d4f3a;
   color: white;
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-weight: 700;
+  justify-content: center;
   padding: 0.85rem 1.25rem;
+  text-decoration: none;
 }
 
 button:disabled {
@@ -31,15 +39,33 @@ button:disabled {
   opacity: 0.65;
 }
 
-button.secondary {
+button.secondary,
+.button.secondary {
   background: #eadfc8;
   color: #1d4f3a;
+}
+
+button.ghost,
+.button.ghost {
+  background: transparent;
+  color: #1d4f3a;
+  outline: 1px solid #d7c9aa;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.page {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: clamp(1.25rem, 4vw, 4rem);
+}
+
+.page.narrow {
+  max-width: 900px;
 }
 
 .shell {
@@ -56,7 +82,12 @@ button.secondary {
   width: 100%;
 }
 
-.eyebrow {
+.library-hero {
+  margin-bottom: 2rem;
+}
+
+.eyebrow,
+.card-kicker {
   color: #876a1f;
   font-size: 0.8rem;
   font-weight: 800;
@@ -73,19 +104,11 @@ h1 {
   max-width: 10ch;
 }
 
-.lede {
-  color: #4e5b50;
-  font-size: clamp(1rem, 2vw, 1.3rem);
-  line-height: 1.6;
-  max-width: 58ch;
-}
-
-.card {
-  background: #fffaf0;
-  border: 1px solid #e4d8bd;
-  border-radius: 28px;
-  box-shadow: 0 24px 70px rgb(42 36 22 / 12%);
-  padding: clamp(1.25rem, 3vw, 2rem);
+.reader-sidebar h1,
+.section-header h1,
+.empty-state h1 {
+  font-size: clamp(2.25rem, 5vw, 4rem);
+  max-width: 14ch;
 }
 
 h2 {
@@ -93,6 +116,25 @@ h2 {
   letter-spacing: 0.08em;
   margin: 0 0 1.25rem;
   text-transform: uppercase;
+}
+
+.lede {
+  color: #4e5b50;
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  line-height: 1.6;
+  max-width: 58ch;
+}
+
+.card,
+.course-card,
+.empty-state,
+.status-strip,
+.result-card {
+  background: #fffaf0;
+  border: 1px solid #e4d8bd;
+  border-radius: 28px;
+  box-shadow: 0 24px 70px rgb(42 36 22 / 12%);
+  padding: clamp(1.25rem, 3vw, 2rem);
 }
 
 dl {
@@ -106,7 +148,8 @@ dl > div {
   padding-bottom: 1rem;
 }
 
-dt {
+dt,
+.status-strip span {
   color: #758071;
   font-size: 0.78rem;
   font-weight: 800;
@@ -136,13 +179,265 @@ dd {
   color: #285b1c;
 }
 
+.status-strip {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 2rem;
+}
+
+.status-strip div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.status-strip strong {
+  overflow-wrap: anywhere;
+}
+
+.section-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.course-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  justify-content: space-between;
+  min-height: 190px;
+  text-decoration: none;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.course-card:hover {
+  box-shadow: 0 28px 80px rgb(42 36 22 / 16%);
+  transform: translateY(-2px);
+}
+
+.course-card h3 {
+  font-size: 1.45rem;
+  margin: 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chips span {
+  background: #eadfc8;
+  border-radius: 999px;
+  color: #536047;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.3rem 0.6rem;
+}
+
+.form-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.segmented {
+  background: #f2ead9;
+  border-radius: 999px;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  width: fit-content;
+}
+
+.segmented button {
+  background: transparent;
+  color: #536047;
+}
+
+.segmented button.active {
+  background: #1d4f3a;
+  color: white;
+}
+
+label {
+  color: #536047;
+  display: grid;
+  font-weight: 800;
+  gap: 0.5rem;
+}
+
+label span,
+.muted {
+  color: #758071;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+input,
+textarea {
+  background: white;
+  border: 1px solid #d7c9aa;
+  border-radius: 16px;
+  color: #18201a;
+  font: inherit;
+  padding: 0.9rem 1rem;
+  width: 100%;
+}
+
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  resize: vertical;
+}
+
+.result-card {
+  margin-top: 1rem;
+}
+
+.reader-page {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.reader-sidebar {
+  background: #fffaf0;
+  border-right: 1px solid #e4d8bd;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 100vh;
+  overflow: auto;
+  padding: clamp(1rem, 3vw, 2rem);
+  position: sticky;
+  top: 0;
+}
+
+.reader-content {
+  min-width: 0;
+  padding: clamp(1.25rem, 4vw, 4rem);
+}
+
+.back-link {
+  color: #876a1f;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.section-tree,
+.section-tree ul {
+  display: grid;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.section-tree ul {
+  border-left: 1px solid #e4d8bd;
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+}
+
+.section-tree button {
+  background: transparent;
+  border-radius: 12px;
+  color: #4e5b50;
+  display: block;
+  font-weight: 700;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  width: 100%;
+}
+
+.section-tree button.active,
+.section-tree button:hover {
+  background: #eadfc8;
+  color: #1d4f3a;
+}
+
+.markdown-body {
+  background: #fffaf0;
+  border: 1px solid #e4d8bd;
+  border-radius: 28px;
+  line-height: 1.75;
+  max-width: 860px;
+  padding: clamp(1.25rem, 4vw, 3rem);
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  letter-spacing: normal;
+  line-height: 1.15;
+  max-width: none;
+  text-transform: none;
+}
+
+.markdown-body h1 {
+  font-size: 2.4rem;
+}
+
+.markdown-body h2 {
+  font-size: 1.8rem;
+}
+
+.markdown-body pre {
+  background: #18201a;
+  border-radius: 16px;
+  color: #fffaf0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #e4d8bd;
+  padding: 0.5rem;
+}
+
 @media (max-width: 760px) {
-  .shell {
+  .shell,
+  .reader-page {
     grid-template-columns: 1fr;
+  }
+
+  .shell {
     place-items: stretch;
   }
 
   h1 {
     max-width: 12ch;
+  }
+
+  .section-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .reader-sidebar {
+    border-right: 0;
+    max-height: none;
+    position: static;
   }
 }
