@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
-  import { getAppStatus, setVaultPath, type AppStatus } from '$lib/api';
+  import { getAppStatus, reindexVault, setVaultPath, type AppStatus, type ReindexSummary } from '$lib/api';
 
   let status = $state<AppStatus | null>(null);
+  let reindexSummary = $state<ReindexSummary | null>(null);
   let error = $state<string | null>(null);
   let choosing = $state(false);
+  let reindexing = $state(false);
 
   onMount(async () => {
     await refreshStatus();
@@ -26,12 +28,25 @@
       const selected = await open({ directory: true, multiple: false, title: 'Choose vault folder' });
       if (typeof selected === 'string') {
         status = await setVaultPath(selected);
+        reindexSummary = null;
       }
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
       choosing = false;
+    }
+  }
+
+  async function runReindex() {
+    reindexing = true;
+    try {
+      reindexSummary = await reindexVault();
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      reindexing = false;
     }
   }
 </script>
@@ -41,8 +56,8 @@
     <p class="eyebrow">CourseLib</p>
     <h1>Local-first personal knowledge library</h1>
     <p class="lede">
-      Milestone 0 is wired: the desktop shell starts, resolves a vault folder, and initializes Git
-      metadata for future destructive-operation snapshots.
+      Milestone 2 is wired: the app creates the vault, initializes Git metadata, applies the SQLite
+      schema, and can rebuild the disposable index from plain files on disk.
     </p>
   </section>
 
@@ -73,8 +88,20 @@
       <p>Checking vault...</p>
     {/if}
 
-    <button type="button" onclick={chooseVault} disabled={choosing}>
-      {choosing ? 'Choosing...' : 'Choose Vault Folder'}
-    </button>
+    <div class="actions">
+      <button type="button" onclick={chooseVault} disabled={choosing || reindexing}>
+        {choosing ? 'Choosing...' : 'Choose Vault Folder'}
+      </button>
+      <button type="button" class="secondary" onclick={runReindex} disabled={reindexing || choosing}>
+        {reindexing ? 'Reindexing...' : 'Reindex Vault'}
+      </button>
+    </div>
+
+    {#if reindexSummary}
+      <p class="success">
+        Indexed {reindexSummary.courses} courses, {reindexSummary.sections} sections,
+        {reindexSummary.categories} categories, and {reindexSummary.paths} paths.
+      </p>
+    {/if}
   </section>
 </main>
