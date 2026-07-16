@@ -35,6 +35,42 @@ export type ReindexSummary = {
   paths: number;
 };
 
+export type CourseListItem = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  categories: string[];
+  section_count: number;
+};
+
+export type SectionNode = {
+  id: string;
+  canonical_path: string;
+  title: string;
+  heading_level: number;
+  order_index: number;
+  children: SectionNode[];
+};
+
+export type CourseDetail = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  categories: string[];
+  sections: SectionNode[];
+};
+
+export type SectionContent = {
+  id: string;
+  course_id: string;
+  canonical_path: string;
+  title: string;
+  raw_markdown: string;
+  html: string;
+};
+
 export function getAppStatus() {
   return invoke<AppStatus>('get_app_status');
 }
@@ -45,6 +81,18 @@ export function setVaultPath(path: string) {
 
 export function importCourse(source: ImportCourseSource) {
   return invoke<WrittenCourse>('import_course', { source });
+}
+
+export function listCourses(filter?: { category?: string; include_archived?: boolean }) {
+  return invoke<CourseListItem[]>('list_courses', { filter });
+}
+
+export function getCourse(courseId: string) {
+  return invoke<CourseDetail>('get_course', { courseId });
+}
+
+export function getSection(sectionId: string) {
+  return invoke<SectionContent>('get_section', { sectionId });
 }
 
 export function reindexVault() {
