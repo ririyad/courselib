@@ -29,7 +29,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_status,
-            commands::set_vault_path
+            commands::set_vault_path,
+            commands::import_course
         ])
         .run(tauri::generate_context!())
         .expect("error while running CourseLib");
