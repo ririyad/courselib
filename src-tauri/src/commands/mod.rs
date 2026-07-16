@@ -4,11 +4,12 @@ use serde::Deserialize;
 use tauri::{AppHandle, State};
 
 use crate::core::{
+    indexer::{self, ReindexSummary},
     models::{AppStatus, WrittenCourse},
     source_fetch::{fetch_link, fetched_from_paste},
     vault,
 };
-use crate::AppState;
+use crate::{db, AppState};
 
 #[derive(Debug, Deserialize)]
 pub enum ImportCourseSource {
@@ -73,5 +74,27 @@ pub async fn import_course(
         } => fetched_from_paste(content, title_hint),
     };
 
-    vault::write_fetched_course(&vault_path, fetched).map_err(|err| err.to_string())
+    let written =
+        vault::write_fetched_course(&vault_path, fetched).map_err(|err| err.to_string())?;
+
+    let mut conn = db::open(state.db_path()).map_err(|err| err.to_string())?;
+    db::apply_schema(&conn).map_err(|err| err.to_string())?;
+    indexer::reindex_course(&mut conn, &vault_path, &written.slug)
+        .map_err(|err| err.to_string())?;
+
+    Ok(written)
+}
+
+#[tauri::command]
+pub fn reindex_vault(state: State<'_, AppState>) -> Result<ReindexSummary, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+
+    vault::ensure_vault(&vault_path).map_err(|err| err.to_string())?;
+    let mut conn = db::open(state.db_path()).map_err(|err| err.to_string())?;
+    db::apply_schema(&conn).map_err(|err| err.to_string())?;
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())
 }

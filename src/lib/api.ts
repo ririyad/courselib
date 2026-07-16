@@ -28,6 +28,13 @@ export type ImportCourseSource =
   | { Link: { url: string } }
   | { Pasted: { content: string; title_hint?: string | null } };
 
+export type ReindexSummary = {
+  courses: number;
+  sections: number;
+  categories: number;
+  paths: number;
+};
+
 export function getAppStatus() {
   return invoke<AppStatus>('get_app_status');
 }
@@ -38,4 +45,8 @@ export function setVaultPath(path: string) {
 
 export function importCourse(source: ImportCourseSource) {
   return invoke<WrittenCourse>('import_course', { source });
+}
+
+export function reindexVault() {
+  return invoke<ReindexSummary>('reindex_vault');
 }
