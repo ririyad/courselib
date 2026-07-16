@@ -40,6 +40,9 @@ fn main() {
             commands::get_app_status,
             commands::set_vault_path,
             commands::import_course,
+            commands::list_courses,
+            commands::get_course,
+            commands::get_section,
             commands::reindex_vault
         ])
         .run(tauri::generate_context!())

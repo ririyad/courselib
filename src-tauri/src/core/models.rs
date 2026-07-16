@@ -58,3 +58,43 @@ pub struct WrittenSection {
     pub order_index: usize,
     pub children: Vec<WrittenSection>,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CourseListItem {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub categories: Vec<String>,
+    pub section_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CourseDetail {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub categories: Vec<String>,
+    pub sections: Vec<SectionNode>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SectionNode {
+    pub id: String,
+    pub canonical_path: String,
+    pub title: String,
+    pub heading_level: u8,
+    pub order_index: usize,
+    pub children: Vec<SectionNode>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SectionContent {
+    pub id: String,
+    pub course_id: String,
+    pub canonical_path: String,
+    pub title: String,
+    pub raw_markdown: String,
+    pub html: String,
+}
