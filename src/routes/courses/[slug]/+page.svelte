@@ -37,6 +37,7 @@
   let reimporting = $state(false);
   let error = $state<string | null>(null);
   let sidebarOpen = $state(false);
+  let sidebarCollapsed = $state(false);
   let editingTitle = $state(false);
   let titleDraft = $state('');
   let savingTitle = $state(false);
@@ -334,7 +335,7 @@
     </section>
   </main>
 {:else if course}
-  <main class="reader-page" class:sidebar-open={sidebarOpen}>
+  <main class="reader-page" class:sidebar-open={sidebarOpen} class:sidebar-collapsed={sidebarCollapsed}>
     <button
       type="button"
       class="reader-sidebar-backdrop"
@@ -345,14 +346,30 @@
     <div class="reader-mobile-bar">
       <a class="back-link" href="/">← Library</a>
       <span class="course-title-short">{course.title}</span>
-      <button type="button" class="secondary" onclick={() => (sidebarOpen = !sidebarOpen)}>
+      <button
+        type="button"
+        class="secondary"
+        onclick={() => {
+          sidebarCollapsed = false;
+          sidebarOpen = !sidebarOpen;
+        }}
+      >
         {sidebarOpen ? 'Close' : 'Sections'}
       </button>
     </div>
 
-    <aside class="reader-sidebar" aria-label="Course navigation">
-      <div class="reader-sidebar-head">
+    <aside class="reader-sidebar" aria-label="Course navigation" aria-hidden={sidebarCollapsed}>
+      <div class="reader-sidebar-actions">
         <a class="back-link" href="/">← Library</a>
+        <button
+          type="button"
+          class="ghost sidebar-collapse-button"
+          onclick={() => (sidebarCollapsed = true)}
+          aria-label="Collapse course sidebar"
+          title="Collapse sidebar"
+        >← Collapse</button>
+      </div>
+      <div class="reader-sidebar-head">
         {#if editingTitle}
           <input
             class="course-title-input"
@@ -440,6 +457,14 @@
     </aside>
 
     <article class="reader-content">
+      {#if sidebarCollapsed}
+        <button
+          type="button"
+          class="ghost reader-sidebar-expand"
+          onclick={() => (sidebarCollapsed = false)}
+          aria-label="Expand course sidebar"
+        >☰ Sections</button>
+      {/if}
       {#if error}
         <ErrorBanner message={error} />
       {/if}
