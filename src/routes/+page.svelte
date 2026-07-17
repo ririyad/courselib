@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import CourseCard from '$lib/components/CourseCard.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import ErrorBanner from '$lib/components/ErrorBanner.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { showToast } from '$lib/stores/toasts.svelte';
   import {
+    deleteCourse,
     getAppStatus,
     listCategories,
     listCourses,
@@ -26,13 +28,23 @@
   let error = $state<string | null>(null);
   let choosing = $state(false);
   let reindexing = $state(false);
+  type CourseView = 'tile' | 'list';
+
   let loadingCourses = $state(true);
+  let coursePendingDelete = $state<CourseListItem | null>(null);
+  let deleting = $state(false);
+  let courseView = $state<CourseView>('tile');
 
   let categoryNames = $derived(
     Object.fromEntries(categories.map((c) => [c.slug, c.name])) as Record<string, string>
   );
 
   onMount(async () => {
+    const savedView = localStorage.getItem('courselib-course-view');
+    if (savedView === 'tile' || savedView === 'list') {
+      courseView = savedView;
+    }
+
     await refreshStatus();
     await refreshCategories();
     await refreshCourses();
@@ -111,6 +123,40 @@
     selectedCategory = slug;
     await refreshCourses();
   }
+
+  function setCourseView(view: CourseView) {
+    courseView = view;
+    localStorage.setItem('courselib-course-view', view);
+  }
+
+  function requestDelete(course: CourseListItem) {
+    if (deleting) return;
+    coursePendingDelete = course;
+  }
+
+  function cancelDelete() {
+    if (deleting) return;
+    coursePendingDelete = null;
+  }
+
+  async function performDelete() {
+    if (!coursePendingDelete || deleting) return;
+
+    deleting = true;
+    const pending = coursePendingDelete;
+    try {
+      await deleteCourse(pending.id);
+      coursePendingDelete = null;
+      await refreshCourses();
+      error = null;
+      showToast(`Deleted “${pending.title}”`, 'success');
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      coursePendingDelete = null;
+    } finally {
+      deleting = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -134,6 +180,42 @@
     <div>
       <h2>{selectedCategory ? 'Filtered' : 'All courses'}</h2>
     </div>
+    <div class="segmented view-toggle" role="group" aria-label="Course view">
+      <button
+        type="button"
+        class:active={courseView === 'tile'}
+        aria-pressed={courseView === 'tile'}
+        aria-label="Tile view"
+        title="Tile view"
+        onclick={() => setCourseView('tile')}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M2.5 2.5h4v4h-4v-4ZM9.5 2.5h4v4h-4v-4ZM2.5 9.5h4v4h-4v-4ZM9.5 9.5h4v4h-4v-4Z"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class:active={courseView === 'list'}
+        aria-pressed={courseView === 'list'}
+        aria-label="List view"
+        title="List view"
+        onclick={() => setCourseView('list')}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M5.5 3.5h8M5.5 8h8M5.5 12.5h8M2.5 3.5h.01M2.5 8h.01M2.5 12.5h.01"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
+        </svg>
+      </button>
+    </div>
   </section>
 
   <section class="filter-bar" aria-label="Category filters">
@@ -154,9 +236,9 @@
   {#if loadingCourses}
     <Skeleton variant="cards" count={3} />
   {:else if courses.length}
-    <div class="course-grid">
+    <div class={courseView === 'tile' ? 'course-grid' : 'course-list'}>
       {#each courses as course}
-        <CourseCard {course} {categoryNames} />
+        <CourseCard {course} {categoryNames} view={courseView} onDelete={requestDelete} />
       {/each}
     </div>
   {:else}
@@ -218,3 +300,17 @@
     </div>
   </details>
 </main>
+
+<ConfirmDialog
+  open={coursePendingDelete !== null}
+  title="Delete course"
+  message={coursePendingDelete
+    ? `Delete “${coursePendingDelete.title}” permanently? Vault files for this course will be removed and cannot be undone from the library.`
+    : 'Delete this course permanently?'}
+  confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+  cancelLabel="Cancel"
+  tone="danger"
+  busy={deleting}
+  onConfirm={performDelete}
+  onCancel={cancelDelete}
+/>

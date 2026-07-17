@@ -614,6 +614,11 @@ h2 {
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 
+.course-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .path-grid {
   margin-bottom: 2rem;
 }
@@ -623,12 +628,13 @@ h2 {
 }
 
 .course-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 1rem;
   justify-content: space-between;
   min-height: 168px;
-  text-decoration: none;
+  padding-bottom: 2.85rem;
   transition:
     transform var(--duration-fast) var(--ease),
     box-shadow var(--duration-fast) var(--ease),
@@ -639,6 +645,91 @@ h2 {
   box-shadow: var(--shadow-hover);
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--border) 60%, var(--primary));
+}
+
+.course-card-link {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  justify-content: space-between;
+  min-height: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.course-card-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.course-card.course-card-list {
+  min-height: 0;
+  padding: 1rem 3.4rem 1rem 1.15rem;
+}
+
+.course-card.course-card-list .course-card-link {
+  align-items: center;
+  display: grid;
+  gap: 0.65rem 1.25rem;
+  grid-template-areas:
+    "content progress"
+    "chips progress";
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 240px);
+}
+
+.course-card.course-card-list .course-card-link > div:first-child {
+  grid-area: content;
+  min-width: 0;
+}
+
+.course-card.course-card-list .progress-widget {
+  grid-area: progress;
+}
+
+.course-card.course-card-list .chips {
+  grid-area: chips;
+}
+
+.course-card.course-card-list h3 {
+  font-size: 1.05rem;
+  margin-bottom: 0.25rem;
+}
+
+.course-card.course-card-list .card-desc {
+  -webkit-line-clamp: 1;
+}
+
+button.course-card-delete {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 1;
+  color: var(--text-subtle);
+  opacity: 0.55;
+}
+
+.course-card.course-card-list button.course-card-delete {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+button.course-card-delete:hover:not(:disabled),
+button.course-card-delete:focus-visible {
+  color: var(--danger);
+  background: var(--danger-bg);
+  opacity: 1;
+}
+
+.course-card:hover button.course-card-delete,
+.course-card:focus-within button.course-card-delete {
+  opacity: 1;
+}
+
+.course-card-delete-icon {
+  display: block;
 }
 
 .course-card h3 {
@@ -906,6 +997,19 @@ h2 {
   color: #fff;
 }
 
+.view-toggle button {
+  align-items: center;
+  display: inline-flex;
+  gap: 0;
+  min-width: 2.1rem;
+  padding: 0.5rem;
+}
+
+.view-toggle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 label {
   color: var(--text-muted);
   display: grid;
@@ -1056,7 +1160,7 @@ textarea {
   padding: 1.25rem;
 }
 
-.dialog-backdrop {
+button.dialog-backdrop {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1066,6 +1170,7 @@ textarea {
   border: 0;
   border-radius: 0;
   background: rgb(12 10 6 / 45%);
+  color: transparent;
   backdrop-filter: blur(3px);
   cursor: default;
   box-shadow: none;
@@ -1073,9 +1178,11 @@ textarea {
   animation: fade-in var(--duration) var(--ease-out) backwards;
 }
 
-.dialog-backdrop:hover,
-.dialog-backdrop:active {
+button.dialog-backdrop:hover:not(:disabled),
+button.dialog-backdrop:active:not(:disabled) {
   background: rgb(12 10 6 / 45%);
+  color: transparent;
+  box-shadow: none;
   transform: none;
 }
 
@@ -1210,35 +1317,43 @@ textarea {
 }
 
 .course-grid > *,
+.course-list > *,
 .path-grid > * {
   animation: rise-in var(--duration-slow) var(--ease-out) backwards;
 }
 
 .course-grid > *:nth-child(1),
+.course-list > *:nth-child(1),
 .path-grid > *:nth-child(1) {
   animation-delay: 40ms;
 }
 .course-grid > *:nth-child(2),
+.course-list > *:nth-child(2),
 .path-grid > *:nth-child(2) {
   animation-delay: 90ms;
 }
 .course-grid > *:nth-child(3),
+.course-list > *:nth-child(3),
 .path-grid > *:nth-child(3) {
   animation-delay: 140ms;
 }
 .course-grid > *:nth-child(4),
+.course-list > *:nth-child(4),
 .path-grid > *:nth-child(4) {
   animation-delay: 190ms;
 }
 .course-grid > *:nth-child(5),
+.course-list > *:nth-child(5),
 .path-grid > *:nth-child(5) {
   animation-delay: 240ms;
 }
 .course-grid > *:nth-child(6),
+.course-list > *:nth-child(6),
 .path-grid > *:nth-child(6) {
   animation-delay: 290ms;
 }
 .course-grid > *:nth-child(n + 7),
+.course-list > *:nth-child(n + 7),
 .path-grid > *:nth-child(n + 7) {
   animation-delay: 330ms;
 }
@@ -1927,6 +2042,21 @@ button.reader-sidebar-backdrop:active {
   .section-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .course-card.course-card-list .course-card-link {
+    align-items: stretch;
+    grid-template-areas:
+      "content"
+      "progress"
+      "chips";
+    grid-template-columns: 1fr;
+  }
+
+  .course-card.course-card-list button.course-card-delete {
+    bottom: auto;
+    top: 0.75rem;
+    transform: none;
   }
 
   .app-header {
