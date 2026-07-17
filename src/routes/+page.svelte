@@ -79,10 +79,10 @@
 
 <main class="page">
   <section class="hero library-hero">
-    <p class="eyebrow">CourseLib · Milestone 3</p>
+    <p class="eyebrow">CourseLib · Milestone 4</p>
     <h1>Local-first course library</h1>
     <p class="lede">
-      Import markdown, rebuild the SQLite index from disk, and open indexed courses for reading.
+      Import markdown, read indexed courses, and track section progress from your vault.
     </p>
     <div class="actions">
       <a class="button" href="/import">Import Course</a>

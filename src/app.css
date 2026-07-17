@@ -351,11 +351,14 @@ textarea {
 }
 
 .section-tree button {
+  align-items: center;
   background: transparent;
   border-radius: 12px;
   color: #4e5b50;
-  display: block;
+  display: flex;
   font-weight: 700;
+  gap: 0.5rem;
+  justify-content: space-between;
   padding: 0.55rem 0.7rem;
   text-align: left;
   width: 100%;
@@ -365,6 +368,87 @@ textarea {
 .section-tree button:hover {
   background: #eadfc8;
   color: #1d4f3a;
+}
+
+.status-dot {
+  border-radius: 999px;
+  flex: 0 0 auto;
+  height: 0.6rem;
+  width: 0.6rem;
+}
+
+.status-dot.not_started {
+  background: #d7c9aa;
+}
+
+.status-dot.in_progress {
+  background: #d69022;
+}
+
+.status-dot.completed {
+  background: #1d8f55;
+}
+
+.progress-widget {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.progress-widget.compact {
+  margin-top: auto;
+}
+
+.progress-meta {
+  color: #536047;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 800;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.progress-track {
+  background: #eadfc8;
+  border-radius: 999px;
+  height: 0.65rem;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: linear-gradient(90deg, #1d4f3a, #2f8f5f);
+  border-radius: inherit;
+  height: 100%;
+  min-width: 0;
+  transition: width 160ms ease;
+}
+
+.reader-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  max-width: 860px;
+}
+
+.status-actions {
+  background: #fffaf0;
+  border: 1px solid #e4d8bd;
+  border-radius: 999px;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+}
+
+.status-actions button {
+  background: transparent;
+  color: #536047;
+  padding: 0.55rem 0.75rem;
+}
+
+.status-actions button.active {
+  background: #1d4f3a;
+  color: white;
 }
 
 .markdown-body {

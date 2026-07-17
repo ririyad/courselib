@@ -21,7 +21,8 @@
         class:active={section.id === activeSectionId}
         onclick={() => onSelect(section)}
       >
-        {section.title}
+        <span>{section.title}</span>
+        <span class={`status-dot ${section.status}`} aria-label={section.status}></span>
       </button>
       {#if section.children.length}
         <Self sections={section.children} {activeSectionId} {onSelect} />
