@@ -4,6 +4,7 @@
   let pathname = $derived($page.url.pathname);
   let isImport = $derived(pathname.startsWith('/import'));
   let isHome = $derived(pathname === '/');
+  let isPaths = $derived(pathname.startsWith('/paths'));
 </script>
 
 <header class="app-header">
@@ -13,9 +14,12 @@
   </a>
 
   <nav class="app-header-nav" aria-label="Primary">
-    {#if !isHome}
-      <a class="nav-link" class:active={isHome} href="/">Library</a>
-    {/if}
+    <a class="nav-link" class:active={isHome} aria-current={isHome ? 'page' : undefined} href="/">
+      Library
+    </a>
+    <a class="nav-link" class:active={isPaths} aria-current={isPaths ? 'page' : undefined} href="/paths">
+      Paths
+    </a>
     {#if isImport}
       <a class="nav-link active" href="/import" aria-current="page">Import</a>
     {:else}
