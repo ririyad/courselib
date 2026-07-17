@@ -482,10 +482,19 @@ h2 {
   margin-bottom: 1rem;
 }
 
-.course-grid {
+.course-grid,
+.path-grid {
   display: grid;
   gap: 0.9rem;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.path-grid {
+  margin-bottom: 2rem;
+}
+
+.library-section {
+  margin-top: 2rem;
 }
 
 .course-card {
@@ -607,8 +616,84 @@ h2 {
   gap: 0.45rem;
 }
 
-.inline-create input {
+.inline-create input,
+.inline-create select {
   min-width: 0;
+}
+
+.path-create {
+  min-width: min(100%, 420px);
+}
+
+.path-editor,
+.path-header {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.path-header {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.6fr);
+}
+
+.section-header.compact {
+  margin-bottom: 0;
+}
+
+.path-items {
+  display: grid;
+  gap: 0.75rem;
+  list-style-position: inside;
+  margin: 0;
+  padding: 0;
+}
+
+.path-items li {
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.path-items li > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.path-items span,
+.check-label {
+  color: var(--text-subtle);
+  font-size: 0.88rem;
+}
+
+.path-item-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.path-item-actions button {
+  padding: 0.45rem 0.7rem;
+}
+
+.check-label {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 0.35rem;
+}
+
+.check-label input {
+  width: auto;
 }
 
 .form-card {
@@ -663,6 +748,7 @@ label span,
 }
 
 input,
+select,
 textarea {
   background: white;
   border: 1px solid var(--border-input);
@@ -675,11 +761,13 @@ textarea {
 }
 
 input:hover,
+select:hover,
 textarea:hover {
   border-color: color-mix(in srgb, var(--border-input) 50%, var(--primary));
 }
 
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible {
   border-color: var(--primary);
 }

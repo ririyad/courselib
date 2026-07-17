@@ -6,25 +6,31 @@
   import ErrorBanner from '$lib/components/ErrorBanner.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import {
+    createPath,
     getAppStatus,
     listCategories,
     listCourses,
+    listPaths,
     reindexVault,
     setVaultPath,
     type AppStatus,
     type Category,
     type CourseListItem,
+    type CoursePathSummary,
     type ReindexSummary
   } from '$lib/api';
 
   let status = $state<AppStatus | null>(null);
   let courses = $state<CourseListItem[]>([]);
+  let paths = $state<CoursePathSummary[]>([]);
   let categories = $state<Category[]>([]);
   let selectedCategory = $state<string | null>(null);
+  let newPathTitle = $state('');
   let reindexSummary = $state<ReindexSummary | null>(null);
   let error = $state<string | null>(null);
   let choosing = $state(false);
   let reindexing = $state(false);
+  let creatingPath = $state(false);
   let loadingCourses = $state(true);
 
   let categoryNames = $derived(
@@ -35,6 +41,7 @@
     await refreshStatus();
     await refreshCategories();
     await refreshCourses();
+    await refreshPaths();
   });
 
   async function refreshStatus() {
@@ -52,6 +59,15 @@
       if (selectedCategory && !categories.some((category) => category.slug === selectedCategory)) {
         selectedCategory = null;
       }
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function refreshPaths() {
+    try {
+      paths = await listPaths();
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -79,6 +95,7 @@
         reindexSummary = null;
         await refreshCategories();
         await refreshCourses();
+        await refreshPaths();
       }
       error = null;
     } catch (err) {
@@ -94,6 +111,7 @@
       reindexSummary = await reindexVault();
       await refreshCategories();
       await refreshCourses();
+      await refreshPaths();
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -106,6 +124,22 @@
     selectedCategory = slug;
     await refreshCourses();
   }
+
+  async function submitPath() {
+    const title = newPathTitle.trim();
+    if (!title) return;
+    creatingPath = true;
+    try {
+      const path = await createPath(title);
+      newPathTitle = '';
+      await refreshPaths();
+      window.location.href = `/paths/${path.slug}`;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      creatingPath = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -117,7 +151,7 @@
     <p class="eyebrow">Your library</p>
     <h1>Courses</h1>
     <p class="lede">
-      Import markdown, read at your pace, and track progress — all offline, from a folder you own.
+      Import markdown, read at your pace, track progress, and sequence courses into learning paths.
     </p>
   </section>
 
@@ -126,6 +160,52 @@
   {/if}
 
   <section class="section-header">
+    <div>
+      <p class="eyebrow">Paths</p>
+      <h2>Learning paths</h2>
+    </div>
+    <div class="inline-create path-create">
+      <input
+        bind:value={newPathTitle}
+        placeholder="New path title"
+        disabled={creatingPath}
+        onkeydown={(event) => {
+          if (event.key === 'Enter') submitPath();
+        }}
+      />
+      <button type="button" onclick={submitPath} disabled={creatingPath || !newPathTitle.trim()}>
+        {creatingPath ? 'Creating…' : 'Create path'}
+      </button>
+    </div>
+  </section>
+
+  {#if paths.length}
+    <div class="path-grid">
+      {#each paths as path}
+        <a class="course-card" href={`/paths/${path.slug}`}>
+          <div>
+            <p class="card-kicker">{path.course_count} courses</p>
+            <h3>{path.title}</h3>
+          </div>
+          <div class="progress-widget compact" aria-label={`${Math.round(path.progress.percent_complete)}% complete`}>
+            <div class="progress-meta">
+              <span>{Math.round(path.progress.percent_complete)}% complete</span>
+              <span>{path.progress.completed}/{path.progress.total_sections} sections</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style={`width: ${Math.min(100, Math.max(0, path.progress.percent_complete))}%`}></div>
+            </div>
+          </div>
+        </a>
+      {/each}
+    </div>
+  {:else}
+    <EmptyState title="No paths yet">
+      <p>Create one above to sequence courses into a curriculum.</p>
+    </EmptyState>
+  {/if}
+
+  <section class="section-header library-section">
     <div>
       <h2>{selectedCategory ? 'Filtered' : 'All courses'}</h2>
     </div>
