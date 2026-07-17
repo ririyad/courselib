@@ -1,7 +1,9 @@
 <script lang="ts">
+  import '@fontsource-variable/inter';
   import '../app.css';
   import { page } from '$app/stores';
   import AppHeader from '$lib/components/AppHeader.svelte';
+  import Toaster from '$lib/components/Toaster.svelte';
 
   let { children } = $props();
 
@@ -18,3 +20,5 @@
     </div>
   </div>
 {/if}
+
+<Toaster />

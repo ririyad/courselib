@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
   let pathname = $derived($page.url.pathname);
   let isImport = $derived(pathname.startsWith('/import'));
@@ -25,5 +26,6 @@
     {:else}
       <a class="button" href="/import">Import</a>
     {/if}
+    <ThemeToggle />
   </nav>
 </header>
