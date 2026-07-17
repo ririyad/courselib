@@ -1,6 +1,6 @@
 <script lang="ts">
   import Self from './SectionTree.svelte';
-  import type { SectionNode } from '$lib/api';
+  import type { ProgressStatus, SectionNode } from '$lib/api';
 
   let {
     sections,
@@ -11,6 +11,12 @@
     activeSectionId: string | null;
     onSelect: (section: SectionNode) => void;
   } = $props();
+
+  const statusLabels: Record<ProgressStatus, string> = {
+    not_started: 'Not started',
+    in_progress: 'In progress',
+    completed: 'Completed'
+  };
 </script>
 
 <ul class="section-tree">
@@ -22,7 +28,11 @@
         onclick={() => onSelect(section)}
       >
         <span>{section.title}</span>
-        <span class={`status-dot ${section.status}`} aria-label={section.status}></span>
+        <span
+          class={`status-dot ${section.status}`}
+          aria-label={statusLabels[section.status]}
+          title={statusLabels[section.status]}
+        ></span>
       </button>
       {#if section.children.length}
         <Self sections={section.children} {activeSectionId} {onSelect} />

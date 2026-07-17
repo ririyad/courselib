@@ -64,8 +64,14 @@
         if (event.key === 'Enter') create();
       }}
     />
-    <button type="button" class="secondary" onclick={create} disabled={disabled || creating || !newCategory.trim()}>
-      {creating ? 'Adding...' : 'Add'}
+    <button
+      type="button"
+      class="secondary"
+      class:busy={creating}
+      onclick={create}
+      disabled={disabled || creating || !newCategory.trim()}
+    >
+      {creating ? 'Adding…' : 'Add'}
     </button>
   </div>
 </section>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorBanner from '$lib/components/ErrorBanner.svelte';
   import { importCourse, type WrittenCourse } from '$lib/api';
 
   let mode = $state<'paste' | 'link'>('paste');
@@ -27,23 +28,38 @@
   }
 </script>
 
+<svelte:head>
+  <title>Import · CourseLib</title>
+</svelte:head>
+
 <main class="page narrow">
   <header class="section-header">
     <div>
-      <p class="eyebrow">Milestone 5</p>
-      <h1>Import course</h1>
-      <p class="lede">Paste markdown directly or fetch a supported repository markdown link.</p>
+      <p class="eyebrow">Add a course</p>
+      <h1>Import</h1>
+      <p class="lede">Paste markdown or fetch a supported repository link.</p>
     </div>
-    <a class="button secondary" href="/">Back to library</a>
   </header>
 
   <section class="card form-card">
-    <div class="segmented">
-      <button type="button" class:active={mode === 'paste'} onclick={() => (mode = 'paste')}>
-        Paste Markdown
+    <div class="segmented" role="tablist" aria-label="Import method">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'paste'}
+        class:active={mode === 'paste'}
+        onclick={() => (mode = 'paste')}
+      >
+        Paste markdown
       </button>
-      <button type="button" class:active={mode === 'link'} onclick={() => (mode = 'link')}>
-        Source Link
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === 'link'}
+        class:active={mode === 'link'}
+        onclick={() => (mode = 'link')}
+      >
+        Source link
       </button>
     </div>
 
@@ -58,19 +74,24 @@
       </label>
     {:else}
       <label>
-        GitHub/GitLab/Codeberg markdown URL
+        GitHub / GitLab / Codeberg markdown URL
         <input bind:value={url} placeholder="https://github.com/owner/repo/blob/main/README.md" />
       </label>
       <p class="muted">Bare GitHub repository URLs resolve to the default branch README.md.</p>
     {/if}
 
     {#if error}
-      <p class="error">{error}</p>
+      <ErrorBanner message={error} />
     {/if}
 
     <div class="actions">
-      <button type="button" onclick={submit} disabled={importing || (mode === 'paste' ? !markdown.trim() : !url.trim())}>
-        {importing ? 'Importing...' : 'Import Course'}
+      <button
+        type="button"
+        class:busy={importing}
+        onclick={submit}
+        disabled={importing || (mode === 'paste' ? !markdown.trim() : !url.trim())}
+      >
+        {importing ? 'Importing…' : 'Import course'}
       </button>
     </div>
   </section>

@@ -2,6 +2,9 @@
   import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import CourseCard from '$lib/components/CourseCard.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
+  import ErrorBanner from '$lib/components/ErrorBanner.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
   import {
     getAppStatus,
     listCategories,
@@ -23,6 +26,10 @@
   let choosing = $state(false);
   let reindexing = $state(false);
   let loadingCourses = $state(true);
+
+  let categoryNames = $derived(
+    Object.fromEntries(categories.map((c) => [c.slug, c.name])) as Record<string, string>
+  );
 
   onMount(async () => {
     await refreshStatus();
@@ -101,49 +108,26 @@
   }
 </script>
 
+<svelte:head>
+  <title>Library · CourseLib</title>
+</svelte:head>
+
 <main class="page">
-  <section class="hero library-hero">
-    <p class="eyebrow">CourseLib · Milestone 5</p>
-    <h1>Local-first course library</h1>
+  <section class="library-hero">
+    <p class="eyebrow">Your library</p>
+    <h1>Courses</h1>
     <p class="lede">
-      Import markdown, read indexed courses, track progress, and organize your library by category.
+      Import markdown, read at your pace, and track progress — all offline, from a folder you own.
     </p>
-    <div class="actions">
-      <a class="button" href="/import">Import Course</a>
-      <button type="button" class="secondary" onclick={runReindex} disabled={reindexing || choosing}>
-        {reindexing ? 'Reindexing...' : 'Reindex Vault'}
-      </button>
-      <button type="button" class="ghost" onclick={chooseVault} disabled={choosing || reindexing}>
-        {choosing ? 'Choosing...' : 'Choose Vault'}
-      </button>
-    </div>
   </section>
 
   {#if error}
-    <p class="error">{error}</p>
+    <ErrorBanner message={error} />
   {/if}
-
-  <section class="status-strip">
-    <div>
-      <span>Vault</span>
-      <strong>{status?.vault_path ?? 'Checking...'}</strong>
-    </div>
-    <div>
-      <span>Git</span>
-      <strong>{status?.vault_git_initialized ? 'Initialized' : 'Checking...'}</strong>
-    </div>
-    {#if reindexSummary}
-      <div>
-        <span>Last reindex</span>
-        <strong>{reindexSummary.courses} courses · {reindexSummary.sections} sections</strong>
-      </div>
-    {/if}
-  </section>
 
   <section class="section-header">
     <div>
-      <p class="eyebrow">Library</p>
-      <h2>{selectedCategory ? 'Filtered courses' : 'Your courses'}</h2>
+      <h2>{selectedCategory ? 'Filtered' : 'All courses'}</h2>
     </div>
   </section>
 
@@ -163,26 +147,69 @@
   </section>
 
   {#if loadingCourses}
-    <p>Loading courses...</p>
+    <Skeleton variant="cards" count={3} />
   {:else if courses.length}
     <div class="course-grid">
       {#each courses as course}
-        <CourseCard {course} />
+        <CourseCard {course} {categoryNames} />
       {/each}
     </div>
   {:else}
-    <section class="empty-state">
-      <h2>No courses yet</h2>
+    <EmptyState title={selectedCategory ? 'No matches' : 'No courses yet'}>
       <p>
         {selectedCategory
           ? 'No courses match this category yet.'
-          : 'Import pasted markdown or a supported GitHub/GitLab/Codeberg link to create your first course.'}
+          : 'Import pasted markdown or a supported GitHub, GitLab, or Codeberg link to create your first course.'}
       </p>
       {#if selectedCategory}
         <button type="button" class="secondary" onclick={() => selectCategory(null)}>Clear filter</button>
       {:else}
         <a class="button" href="/import">Import your first course</a>
       {/if}
-    </section>
+    </EmptyState>
   {/if}
+
+  <details class="vault-details">
+    <summary>Vault settings</summary>
+    <div class="vault-panel">
+      <div class="vault-meta">
+        <div>
+          <span>Path</span>
+          <strong>{status?.vault_path ?? 'Checking…'}</strong>
+        </div>
+        <div>
+          <span>Git history</span>
+          <strong>{status?.vault_git_initialized ? 'Initialized' : 'Not initialized'}</strong>
+        </div>
+        {#if reindexSummary}
+          <div>
+            <span>Last reindex</span>
+            <strong
+              >{reindexSummary.courses} courses · {reindexSummary.sections} sections</strong
+            >
+          </div>
+        {/if}
+      </div>
+      <div class="actions">
+        <button
+          type="button"
+          class="secondary"
+          class:busy={reindexing}
+          onclick={runReindex}
+          disabled={reindexing || choosing}
+        >
+          {reindexing ? 'Reindexing…' : 'Reindex vault'}
+        </button>
+        <button
+          type="button"
+          class="ghost"
+          class:busy={choosing}
+          onclick={chooseVault}
+          disabled={choosing || reindexing}
+        >
+          {choosing ? 'Choosing…' : 'Choose vault folder'}
+        </button>
+      </div>
+    </div>
+  </details>
 </main>
