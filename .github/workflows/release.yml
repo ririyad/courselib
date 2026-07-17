@@ -22,14 +22,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Apple Silicon runners (macos-14+)
+          # Apple Silicon runners — build arm64 natively.
           - name: macOS arm64
-            platform: macos-latest
+            platform: macos-14-arm64
             rust_target: aarch64-apple-darwin
             args: '--target aarch64-apple-darwin'
-          # Intel runners — avoid cross-compiling x86_64 from arm64
+          # Intel runners — macos-13 is deprecated/low-availability and can queue forever.
           - name: macOS x64
-            platform: macos-13
+            platform: macos-14
             rust_target: x86_64-apple-darwin
             args: '--target x86_64-apple-darwin'
 
