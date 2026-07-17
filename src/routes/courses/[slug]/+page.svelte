@@ -358,113 +358,158 @@
       </button>
     </div>
 
-    <aside class="reader-sidebar" aria-label="Course navigation" aria-hidden={sidebarCollapsed}>
-      <div class="reader-sidebar-actions">
-        <a class="back-link" href="/">← Library</a>
-        <button
-          type="button"
-          class="ghost sidebar-collapse-button"
-          onclick={() => (sidebarCollapsed = true)}
-          aria-label="Collapse course sidebar"
-          title="Collapse sidebar"
-        >← Collapse</button>
-      </div>
-      <div class="reader-sidebar-head">
-        {#if editingTitle}
-          <input
-            class="course-title-input"
-            bind:this={titleInputEl}
-            bind:value={titleDraft}
-            aria-label="Course title"
-            disabled={savingTitle}
-            onkeydown={onTitleKeydown}
-            onblur={() => void saveTitle()}
-          />
-        {:else}
+    <aside
+      class="reader-sidebar"
+      aria-label="Course navigation"
+      aria-hidden={sidebarCollapsed}
+    >
+      <div class="reader-sidebar-inner">
+        <div class="reader-sidebar-actions">
+          <a class="back-link" href="/">← Library</a>
           <button
             type="button"
-            class="course-title-button"
-            onclick={startEditTitle}
-            title="Click to rename"
-            aria-label={`Rename course: ${course.title}`}
+            class="ghost icon-button sidebar-collapse-button"
+            onclick={() => (sidebarCollapsed = true)}
+            aria-label="Collapse course sidebar"
+            title="Collapse sidebar"
           >
-            <h1>{course.title}</h1>
-            <span class="course-title-hint">Edit</span>
+            <svg
+              class="sidebar-toggle-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="2" stroke="currentColor" stroke-width="1.5" />
+              <path d="M6 2.25v11.5" stroke="currentColor" stroke-width="1.5" />
+              <path
+                d="M10.25 5.75 8 8l2.25 2.25"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
           </button>
-        {/if}
-        {#if course.description}
-          <p class="muted">{course.description}</p>
-        {/if}
-        <ProgressBar progress={course.progress} compact />
-      </div>
-
-      <details class="sidebar-disclosure">
-        <summary>Categories</summary>
-        <CategoryPicker
-          {categories}
-          selected={course.categories}
-          disabled={updatingCategories}
-          onToggle={toggleCategory}
-          onCreate={addCategory}
-        />
-      </details>
-
-      <details class="sidebar-disclosure source-panel">
-        <summary>Source</summary>
-        <div class="source-actions">
-          {#if drift?.changed}
-            <span class="drift-badge">Update available</span>
-          {:else if drift && drift.source_available}
-            <span class="drift-badge current">Current</span>
-          {:else if drift && !drift.source_available}
-            <span class="drift-badge muted-badge">Pasted source</span>
-          {/if}
-          <button
-            type="button"
-            class="ghost"
-            class:busy={checkingDrift}
-            onclick={() => checkDrift(true)}
-            disabled={checkingDrift || reimporting}
-          >{checkingDrift ? 'Checking…' : 'Check drift'}</button>
-          {#if drift?.source_available}
+        </div>
+        <div class="reader-sidebar-head">
+          {#if editingTitle}
+            <input
+              class="course-title-input"
+              bind:this={titleInputEl}
+              bind:value={titleDraft}
+              aria-label="Course title"
+              disabled={savingTitle}
+              onkeydown={onTitleKeydown}
+              onblur={() => void saveTitle()}
+            />
+          {:else}
             <button
               type="button"
-              class="secondary"
-              class:busy={reimporting}
-              onclick={reimportWithConfirmation}
-              disabled={checkingDrift || reimporting}
-            >{reimporting ? 'Re-importing…' : 'Re-import'}</button>
+              class="course-title-button"
+              onclick={startEditTitle}
+              title="Click to rename"
+              aria-label={`Rename course: ${course.title}`}
+            >
+              <h1>{course.title}</h1>
+              <span class="course-title-hint">Edit</span>
+            </button>
           {/if}
+          {#if course.description}
+            <p class="muted">{course.description}</p>
+          {/if}
+          <ProgressBar progress={course.progress} compact />
         </div>
-        {#if drift?.changed}
-          <p class="muted">The upstream source hash differs from this course snapshot.</p>
-          {#if drift.orphaned_progress_paths.length}
-            <p class="warning-text">
-              {drift.orphaned_progress_paths.length} progress entr{drift.orphaned_progress_paths.length === 1 ? 'y' : 'ies'} will be removed on re-import.
-            </p>
-          {/if}
-        {:else if drift && !drift.source_available}
-          <p class="muted">Pasted courses do not have a remote source to check.</p>
-        {/if}
-      </details>
 
-      {#if course.sections.length}
-        <p class="sidebar-nav-label">Sections</p>
-        <SectionTree sections={course.sections} {activeSectionId} onSelect={selectSection} />
-      {:else}
-        <p class="muted">No sections indexed for this course.</p>
-      {/if}
+        <details class="sidebar-disclosure">
+          <summary>Categories</summary>
+          <CategoryPicker
+            {categories}
+            selected={course.categories}
+            disabled={updatingCategories}
+            onToggle={toggleCategory}
+            onCreate={addCategory}
+          />
+        </details>
+
+        <details class="sidebar-disclosure source-panel">
+          <summary>Source</summary>
+          <div class="source-actions">
+            {#if drift?.changed}
+              <span class="drift-badge">Update available</span>
+            {:else if drift && drift.source_available}
+              <span class="drift-badge current">Current</span>
+            {:else if drift && !drift.source_available}
+              <span class="drift-badge muted-badge">Pasted source</span>
+            {/if}
+            <button
+              type="button"
+              class="ghost"
+              class:busy={checkingDrift}
+              onclick={() => checkDrift(true)}
+              disabled={checkingDrift || reimporting}
+            >{checkingDrift ? 'Checking…' : 'Check drift'}</button>
+            {#if drift?.source_available}
+              <button
+                type="button"
+                class="secondary"
+                class:busy={reimporting}
+                onclick={reimportWithConfirmation}
+                disabled={checkingDrift || reimporting}
+              >{reimporting ? 'Re-importing…' : 'Re-import'}</button>
+            {/if}
+          </div>
+          {#if drift?.changed}
+            <p class="muted">The upstream source hash differs from this course snapshot.</p>
+            {#if drift.orphaned_progress_paths.length}
+              <p class="warning-text">
+                {drift.orphaned_progress_paths.length} progress entr{drift.orphaned_progress_paths.length === 1 ? 'y' : 'ies'} will be removed on re-import.
+              </p>
+            {/if}
+          {:else if drift && !drift.source_available}
+            <p class="muted">Pasted courses do not have a remote source to check.</p>
+          {/if}
+        </details>
+
+        {#if course.sections.length}
+          <p class="sidebar-nav-label">Sections</p>
+          <SectionTree sections={course.sections} {activeSectionId} onSelect={selectSection} />
+        {:else}
+          <p class="muted">No sections indexed for this course.</p>
+        {/if}
+      </div>
     </aside>
 
     <article class="reader-content">
-      {#if sidebarCollapsed}
-        <button
-          type="button"
-          class="ghost reader-sidebar-expand"
-          onclick={() => (sidebarCollapsed = false)}
-          aria-label="Expand course sidebar"
-        >☰ Sections</button>
-      {/if}
+      <button
+        type="button"
+        class="ghost icon-button reader-sidebar-expand"
+        class:is-visible={sidebarCollapsed}
+        onclick={() => (sidebarCollapsed = false)}
+        aria-label="Expand course sidebar"
+        title="Expand sidebar"
+        tabindex={sidebarCollapsed ? 0 : -1}
+      >
+        <svg
+          class="sidebar-toggle-icon"
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+        >
+          <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="2" stroke="currentColor" stroke-width="1.5" />
+          <path d="M6 2.25v11.5" stroke="currentColor" stroke-width="1.5" />
+          <path
+            d="M8 5.75 10.25 8 8 10.25"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
       {#if error}
         <ErrorBanner message={error} />
       {/if}

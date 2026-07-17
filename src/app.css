@@ -39,8 +39,10 @@
 
   /* Motion */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
   --duration: 180ms;
+  --duration-sidebar: 280ms;
 
   /* Type */
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -916,39 +918,43 @@ textarea {
 
 .reader-page {
   display: grid;
-  grid-template-columns: minmax(240px, var(--reader-sidebar)) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   min-height: 100vh;
   background: var(--bg);
-  transition: grid-template-columns var(--duration) var(--ease);
-}
-
-.reader-page.sidebar-collapsed {
-  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .reader-sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
+  box-sizing: border-box;
+  max-height: 100vh;
+  overflow: hidden;
+  position: sticky;
+  top: 0;
+  width: var(--reader-sidebar);
+  transition:
+    width var(--duration-sidebar) var(--ease-out),
+    border-color var(--duration-sidebar) var(--ease-out),
+    opacity calc(var(--duration-sidebar) * 0.7) var(--ease-out);
+}
+
+.reader-sidebar-inner {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  height: 100%;
   max-height: 100vh;
   overflow: auto;
   padding: clamp(1rem, 2.5vw, 1.5rem);
-  position: sticky;
-  top: 0;
-  transition:
-    opacity var(--duration-fast) var(--ease),
-    padding var(--duration-fast) var(--ease);
+  width: var(--reader-sidebar);
 }
 
 .reader-page.sidebar-collapsed .reader-sidebar {
-  border-right: 0;
+  border-right-color: transparent;
   opacity: 0;
-  overflow: hidden;
-  padding-left: 0;
-  padding-right: 0;
   pointer-events: none;
+  width: 0;
 }
 
 .reader-sidebar-actions {
@@ -958,14 +964,52 @@ textarea {
   justify-content: space-between;
 }
 
-.sidebar-collapse-button,
-.reader-sidebar-expand {
-  font-size: 0.82rem;
-  padding: 0.45rem 0.7rem;
+button.icon-button,
+.button.icon-button {
+  flex-shrink: 0;
+  gap: 0;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  width: 2rem;
+}
+
+.sidebar-toggle-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-button {
+  color: var(--text-muted);
+}
+
+.sidebar-collapse-button:hover:not(:disabled) {
+  color: var(--primary);
 }
 
 .reader-sidebar-expand {
-  margin-bottom: 1rem;
+  left: clamp(1.25rem, 3.5vw, 2.75rem);
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: clamp(1.25rem, 3.5vw, 2.75rem);
+  transform: translateX(-0.4rem) scale(0.94);
+  transition:
+    opacity var(--duration-sidebar) var(--ease-out),
+    transform var(--duration-sidebar) var(--ease-out),
+    background var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+  transition-delay: 0ms;
+  visibility: hidden;
+  z-index: 2;
+}
+
+.reader-sidebar-expand.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0) scale(1);
+  transition-delay: 90ms;
+  visibility: visible;
 }
 
 .reader-sidebar-head {
@@ -976,6 +1020,13 @@ textarea {
 .reader-content {
   min-width: 0;
   padding: clamp(1.25rem, 3.5vw, 2.75rem);
+  position: relative;
+  transition: padding-top var(--duration-sidebar) var(--ease-out);
+}
+
+.reader-page.sidebar-collapsed .reader-content {
+  /* room for the floating expand control so titles don't collide */
+  padding-top: calc(clamp(1.25rem, 3.5vw, 2.75rem) + 2.5rem);
 }
 
 .back-link {
@@ -1449,22 +1500,27 @@ button.reader-sidebar-backdrop:active {
   .reader-sidebar,
   .reader-page.sidebar-collapsed .reader-sidebar {
     border-right: 1px solid var(--border);
+    border-right-color: var(--border);
+    box-shadow: var(--shadow-hover);
+    inset: 0 auto 0 0;
+    max-height: 100vh;
     opacity: 1;
     overflow: auto;
-    padding: clamp(1rem, 2.5vw, 1.5rem);
     pointer-events: auto;
     position: fixed;
-    inset: 0 auto 0 0;
-    width: min(320px, 88vw);
-    max-height: 100vh;
-    z-index: 50;
     transform: translateX(-105%);
     transition: transform var(--duration) var(--ease);
-    box-shadow: var(--shadow-hover);
+    width: min(320px, 88vw);
+    z-index: 50;
+  }
+
+  .reader-sidebar-inner {
+    width: 100%;
   }
 
   .sidebar-collapse-button,
-  .reader-sidebar-expand {
+  .reader-sidebar-expand,
+  .reader-sidebar-expand.is-visible {
     display: none;
   }
 
@@ -1488,7 +1544,8 @@ button.reader-sidebar-backdrop:active {
     pointer-events: auto;
   }
 
-  .reader-content {
+  .reader-content,
+  .reader-page.sidebar-collapsed .reader-content {
     padding: 1.15rem;
   }
 
