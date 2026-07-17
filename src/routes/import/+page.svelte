@@ -70,7 +70,7 @@
       </label>
       <label>
         Markdown
-        <textarea bind:value={markdown} rows="16" placeholder="# Course title\n\n## Section"></textarea>
+        <textarea bind:value={markdown} rows="16" placeholder={"# Course title\n\n## Section"}></textarea>
       </label>
     {:else}
       <label>

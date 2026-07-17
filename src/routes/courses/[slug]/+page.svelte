@@ -3,9 +3,12 @@
   import { page } from '$app/stores';
   import CategoryPicker from '$lib/components/CategoryPicker.svelte';
   import ErrorBanner from '$lib/components/ErrorBanner.svelte';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import { showToast } from '$lib/stores/toasts.svelte';
   import ProgressBar from '$lib/components/ProgressBar.svelte';
   import SectionTree from '$lib/components/SectionTree.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import {
     checkSourceDrift,
     createCategory,
@@ -42,6 +45,8 @@
   let titleDraft = $state('');
   let savingTitle = $state(false);
   let titleInputEl = $state<HTMLInputElement | null>(null);
+  let confirmReimportOpen = $state(false);
+  let confirmReimportMessage = $state('');
 
   let slug = $derived(decodeURIComponent($page.params.slug ?? ''));
 
@@ -130,7 +135,7 @@
     }
   }
 
-  async function reimportWithConfirmation() {
+  async function requestReimport() {
     if (!course || reimporting) return;
 
     const status = drift ?? (await checkDrift(true));
@@ -143,10 +148,17 @@
     const orphanText = orphanCount
       ? `\n\n${orphanCount} progress entr${orphanCount === 1 ? 'y' : 'ies'} will be removed because the matching section no longer exists.`
       : '';
-    const confirmed = window.confirm(
-      `Re-import “${course.title}” from its source? Current vault files will be committed to git before replacement.${orphanText}`
-    );
-    if (!confirmed) return;
+    confirmReimportMessage = `Re-import “${course.title}” from its source? Current vault files will be committed to git before replacement.${orphanText}`;
+    confirmReimportOpen = true;
+  }
+
+  function cancelReimport() {
+    if (reimporting) return;
+    confirmReimportOpen = false;
+  }
+
+  async function performReimport() {
+    if (!course || reimporting) return;
 
     const activeCanonicalPath = activeSectionNode?.canonical_path ?? null;
     reimporting = true;
@@ -165,8 +177,11 @@
         activeSectionNode = null;
       }
       error = null;
+      confirmReimportOpen = false;
+      showToast('Course re-imported from source', 'success');
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+      confirmReimportOpen = false;
     } finally {
       reimporting = false;
     }
@@ -346,6 +361,7 @@
     <div class="reader-mobile-bar">
       <a class="back-link" href="/">← Library</a>
       <span class="course-title-short">{course.title}</span>
+      <ThemeToggle />
       <button
         type="button"
         class="secondary"
@@ -366,7 +382,9 @@
       <div class="reader-sidebar-inner">
         <div class="reader-sidebar-actions">
           <a class="back-link" href="/">← Library</a>
-          <button
+          <div class="reader-sidebar-action-group">
+            <ThemeToggle />
+            <button
             type="button"
             class="ghost icon-button sidebar-collapse-button"
             onclick={() => (sidebarCollapsed = true)}
@@ -392,6 +410,7 @@
               />
             </svg>
           </button>
+          </div>
         </div>
         <div class="reader-sidebar-head">
           {#if editingTitle}
@@ -455,7 +474,7 @@
                 type="button"
                 class="secondary"
                 class:busy={reimporting}
-                onclick={reimportWithConfirmation}
+                onclick={requestReimport}
                 disabled={checkingDrift || reimporting}
               >{reimporting ? 'Re-importing…' : 'Re-import'}</button>
             {/if}
@@ -567,3 +586,15 @@
     </article>
   </main>
 {/if}
+
+<ConfirmDialog
+  open={confirmReimportOpen}
+  title="Re-import course"
+  message={confirmReimportMessage}
+  confirmLabel={reimporting ? 'Re-importing…' : 'Re-import'}
+  cancelLabel="Cancel"
+  tone="danger"
+  busy={reimporting}
+  onConfirm={performReimport}
+  onCancel={cancelReimport}
+/>

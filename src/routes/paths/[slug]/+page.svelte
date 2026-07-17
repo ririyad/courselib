@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import ErrorBanner from '$lib/components/ErrorBanner.svelte';
   import PathEditor from '$lib/components/PathEditor.svelte';
@@ -21,7 +22,7 @@
   let error = $state<string | null>(null);
 
   onMount(async () => {
-    const slug = decodeURIComponent(window.location.pathname.split('/').filter(Boolean).pop() ?? '');
+    const slug = decodeURIComponent($page.params.slug ?? '');
     try {
       const [loadedPath, loadedCourses] = await Promise.all([getPath(slug), listCourses()]);
       path = loadedPath;

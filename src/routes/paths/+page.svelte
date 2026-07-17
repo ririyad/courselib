@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import ErrorBanner from '$lib/components/ErrorBanner.svelte';
   import ProgressBar from '$lib/components/ProgressBar.svelte';
@@ -36,7 +37,7 @@
     try {
       const path = await createPath(title);
       newPathTitle = '';
-      window.location.href = `/paths/${path.slug}`;
+      await goto(`/paths/${path.slug}`);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {

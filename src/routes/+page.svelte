@@ -5,6 +5,7 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import ErrorBanner from '$lib/components/ErrorBanner.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import { showToast } from '$lib/stores/toasts.svelte';
   import {
     getAppStatus,
     listCategories,
@@ -95,6 +96,10 @@
       await refreshCategories();
       await refreshCourses();
       error = null;
+      showToast(
+        `Reindexed ${reindexSummary.courses} course${reindexSummary.courses === 1 ? '' : 's'} · ${reindexSummary.sections} sections`,
+        'success'
+      );
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
