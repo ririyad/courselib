@@ -35,6 +35,11 @@ export type ReindexSummary = {
   paths: number;
 };
 
+export type Category = {
+  slug: string;
+  name: string;
+};
+
 export type ProgressStatus = 'not_started' | 'in_progress' | 'completed';
 
 export type CourseProgress = {
@@ -107,6 +112,21 @@ export function getCourse(courseId: string) {
 
 export function getSection(sectionId: string) {
   return invoke<SectionContent>('get_section', { sectionId });
+}
+
+export function updateCourseMeta(
+  courseId: string,
+  patch: { title?: string; description?: string; categories?: string[] }
+) {
+  return invoke<CourseDetail>('update_course_meta', { courseId, patch });
+}
+
+export function listCategories() {
+  return invoke<Category[]>('list_categories');
+}
+
+export function createCategory(name: string) {
+  return invoke<Category>('create_category', { name });
 }
 
 export function markSectionStatus(sectionId: string, status: ProgressStatus) {

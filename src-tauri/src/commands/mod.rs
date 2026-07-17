@@ -1,16 +1,19 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::PathBuf,
+};
 
 use chrono::{SecondsFormat, Utc};
 use comrak::{markdown_to_html, Options};
 use rusqlite::{params, Connection, OptionalExtension};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::core::{
     indexer::{self, ReindexSummary},
     models::{
-        AppStatus, CourseDetail, CourseListItem, CourseProgress, ProgressStatus, SectionContent,
-        SectionNode, SectionProgressEntry, WrittenCourse,
+        AppStatus, Category, CourseDetail, CourseListItem, CourseManifest, CourseProgress,
+        ProgressStatus, SectionContent, SectionNode, SectionProgressEntry, WrittenCourse,
     },
     source_fetch::{fetch_link, fetched_from_paste},
     vault,
@@ -32,6 +35,13 @@ pub enum ImportCourseSource {
 pub struct CourseListFilter {
     pub category: Option<String>,
     pub include_archived: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct CourseMetaPatch {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub categories: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -160,37 +170,7 @@ pub fn list_courses(
 #[tauri::command]
 pub fn get_course(state: State<'_, AppState>, course_id: String) -> Result<CourseDetail, String> {
     let conn = open_index(&state)?;
-    let course = conn
-        .query_row(
-            "SELECT id, slug, title, description FROM courses WHERE id = ?1 OR slug = ?1",
-            params![course_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| "course not found".to_string())?;
-
-    let rows = load_section_rows(&conn, &course.0)?;
-    let sections = build_section_tree(&rows, None);
-    let categories = load_course_categories(&conn, &course.0).map_err(|err| err.to_string())?;
-    let progress = load_course_progress(&conn, &course.0).map_err(|err| err.to_string())?;
-
-    Ok(CourseDetail {
-        id: course.0,
-        slug: course.1,
-        title: course.2,
-        description: course.3,
-        categories,
-        progress,
-        sections,
-    })
+    load_course_detail(&conn, &course_id)
 }
 
 #[tauri::command]
@@ -230,6 +210,113 @@ pub fn get_section(
         raw_markdown,
         html,
     })
+}
+
+#[tauri::command]
+pub fn list_categories(state: State<'_, AppState>) -> Result<Vec<Category>, String> {
+    let conn = open_index(&state)?;
+    let mut stmt = conn
+        .prepare("SELECT slug, name FROM categories ORDER BY lower(name)")
+        .map_err(|err| err.to_string())?;
+
+    let categories = stmt
+        .query_map([], |row| {
+            Ok(Category {
+                slug: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+
+    Ok(categories)
+}
+
+#[tauri::command]
+pub fn create_category(state: State<'_, AppState>, name: String) -> Result<Category, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+    vault::ensure_vault(&vault_path).map_err(|err| err.to_string())?;
+
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("category name cannot be empty".to_string());
+    }
+
+    let categories_path = vault_path.join("categories.yaml");
+    let mut categories = read_categories_file(&categories_path).map_err(|err| err.to_string())?;
+    let slug = unique_category_slug(name, &categories);
+    let category = Category {
+        slug,
+        name: name.to_string(),
+    };
+    categories.push(category.clone());
+    write_categories_file(&categories_path, &categories).map_err(|err| err.to_string())?;
+
+    let mut conn = open_index(&state)?;
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+    Ok(category)
+}
+
+#[tauri::command]
+pub fn update_course_meta(
+    state: State<'_, AppState>,
+    course_id: String,
+    patch: CourseMetaPatch,
+) -> Result<CourseDetail, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+
+    let mut conn = open_index(&state)?;
+    let (indexed_course_id, course_slug, course_vault_path) = conn
+        .query_row(
+            "SELECT id, slug, vault_path FROM courses WHERE id = ?1 OR slug = ?1",
+            params![course_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "course not found".to_string())?;
+
+    let manifest_path = PathBuf::from(course_vault_path).join("_course.yaml");
+    let mut manifest: CourseManifest =
+        read_yaml_file(&manifest_path).map_err(|err| err.to_string())?;
+
+    if let Some(title) = patch.title {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err("course title cannot be empty".to_string());
+        }
+        manifest.title = title.to_string();
+    }
+    if let Some(description) = patch.description {
+        manifest.description = if description.trim().is_empty() {
+            None
+        } else {
+            Some(description)
+        };
+    }
+    if let Some(categories) = patch.categories {
+        manifest.categories =
+            normalize_course_categories(&vault_path, categories).map_err(|err| err.to_string())?;
+    }
+
+    write_yaml_file(&manifest_path, &manifest).map_err(|err| err.to_string())?;
+    indexer::reindex_course(&mut conn, &vault_path, &course_slug).map_err(|err| err.to_string())?;
+    load_course_detail(&conn, &indexed_course_id)
 }
 
 #[tauri::command]
@@ -308,6 +395,40 @@ fn open_index(state: &State<'_, AppState>) -> Result<Connection, String> {
     let conn = db::open(state.db_path()).map_err(|err| err.to_string())?;
     db::apply_schema(&conn).map_err(|err| err.to_string())?;
     Ok(conn)
+}
+
+fn load_course_detail(conn: &Connection, course_id: &str) -> Result<CourseDetail, String> {
+    let course = conn
+        .query_row(
+            "SELECT id, slug, title, description FROM courses WHERE id = ?1 OR slug = ?1",
+            params![course_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "course not found".to_string())?;
+
+    let rows = load_section_rows(conn, &course.0)?;
+    let sections = build_section_tree(&rows, None);
+    let categories = load_course_categories(conn, &course.0).map_err(|err| err.to_string())?;
+    let progress = load_course_progress(conn, &course.0).map_err(|err| err.to_string())?;
+
+    Ok(CourseDetail {
+        id: course.0,
+        slug: course.1,
+        title: course.2,
+        description: course.3,
+        categories,
+        progress,
+        sections,
+    })
 }
 
 fn load_course_categories(conn: &Connection, course_id: &str) -> rusqlite::Result<Vec<String>> {
@@ -429,6 +550,80 @@ fn course_progress_from_counts(
         completed,
         percent_complete,
     }
+}
+
+fn normalize_course_categories(
+    vault_path: &std::path::Path,
+    category_slugs: Vec<String>,
+) -> anyhow::Result<Vec<String>> {
+    let categories = read_categories_file(&vault_path.join("categories.yaml"))?;
+    let existing = categories
+        .iter()
+        .map(|category| category.slug.as_str())
+        .collect::<HashSet<_>>();
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::new();
+
+    for slug in category_slugs {
+        let slug = slug.trim();
+        if slug.is_empty() || !seen.insert(slug.to_string()) {
+            continue;
+        }
+        if !existing.contains(slug) {
+            anyhow::bail!("unknown category: {slug}");
+        }
+        normalized.push(slug.to_string());
+    }
+
+    Ok(normalized)
+}
+
+fn read_categories_file(path: &std::path::Path) -> anyhow::Result<Vec<Category>> {
+    if !path.is_file() {
+        return Ok(Vec::new());
+    }
+    read_yaml_file(path)
+}
+
+fn write_categories_file(path: &std::path::Path, categories: &[Category]) -> anyhow::Result<()> {
+    let mut categories = categories.to_vec();
+    categories.sort_by_key(|category| category.name.to_lowercase());
+    write_yaml_file(path, &categories)
+}
+
+fn unique_category_slug(name: &str, categories: &[Category]) -> String {
+    let base = {
+        let slug = slug::slugify(name);
+        if slug.is_empty() {
+            "category".to_string()
+        } else {
+            slug
+        }
+    };
+    let existing = categories
+        .iter()
+        .map(|category| category.slug.as_str())
+        .collect::<HashSet<_>>();
+    let mut candidate = base.clone();
+    let mut suffix = 2;
+
+    while existing.contains(candidate.as_str()) {
+        candidate = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+
+    candidate
+}
+
+fn read_yaml_file<T: for<'de> Deserialize<'de>>(path: &std::path::Path) -> anyhow::Result<T> {
+    let contents = std::fs::read_to_string(path)?;
+    Ok(serde_yaml::from_str(&contents)?)
+}
+
+fn write_yaml_file<T: Serialize>(path: &std::path::Path, value: &T) -> anyhow::Result<()> {
+    let yaml = serde_yaml::to_string(value)?;
+    std::fs::write(path, yaml)?;
+    Ok(())
 }
 
 fn write_progress_entry(

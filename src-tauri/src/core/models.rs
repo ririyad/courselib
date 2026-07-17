@@ -41,6 +41,12 @@ pub struct CourseManifest {
     pub source: CourseSource,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Category {
+    pub slug: String,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct WrittenCourse {
     pub title: String,

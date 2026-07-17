@@ -43,6 +43,9 @@ fn main() {
             commands::list_courses,
             commands::get_course,
             commands::get_section,
+            commands::update_course_meta,
+            commands::list_categories,
+            commands::create_category,
             commands::mark_section_status,
             commands::get_course_progress,
             commands::reindex_vault
