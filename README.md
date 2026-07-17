@@ -56,9 +56,55 @@ The app opens a native window. On first use it creates a default vault (via `dir
 |---------|---------|
 | `npm run tauri -- dev` | Develop with hot reload |
 | `npm run build` | Build static frontend → `build/` |
+| `npm run tauri -- build` | Package release desktop app (local) |
 | `npm run tauri -- build --debug` | Package debug desktop app |
 | `npm run validate` | Rust tests + frontend build + Tauri debug build |
 | `cd src-tauri && cargo test` | Backend unit tests only |
+
+---
+
+## Releases
+
+Published builds ship via **GitHub Releases**. CI currently builds **macOS** (Apple Silicon + Intel). Linux/Windows can be added to the same workflow later.
+
+| Surface | Purpose |
+|---------|---------|
+| [Releases](https://github.com/ririyad/courselib/releases) | Version notes + downloadable macOS assets |
+| [Actions → Release](https://github.com/ririyad/courselib/actions/workflows/release.yml) | Full **deploy/build log** for each publish |
+
+### Download (users)
+
+1. Open the [latest release](https://github.com/ririyad/courselib/releases/latest).
+2. Download the macOS asset that matches your chip (arm64 / Apple Silicon, or x64 / Intel).
+3. Open the app. If macOS blocks an unsigned build, use **Right-click → Open** (or System Settings → Privacy & Security). Apple notarization is not configured for v0.1.
+
+### Publish a release (maintainers)
+
+Keep versions aligned, then tag:
+
+| File | Field |
+|------|--------|
+| `package.json` | `"version"` |
+| `src-tauri/tauri.conf.json` | `"version"` |
+| `src-tauri/Cargo.toml` | `version` (optional but recommended) |
+| Git tag | `vX.Y.Z` (must match app version) |
+
+```bash
+# 1. Bump version in the files above, then commit
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+git commit -m "chore: release v0.1.0"
+
+# 2. Tag and push (tag push starts the Release workflow)
+git tag v0.1.0
+git push origin main
+git push origin v0.1.0
+```
+
+You can also run the **Release** workflow manually (**Actions → Release → Run workflow**).
+
+**One-time repo setting:** GitHub → **Settings → Actions → General → Workflow permissions** → enable **Read and write permissions** so the workflow can create releases and upload assets.
+
+Workflow file: [`.github/workflows/release.yml`](./.github/workflows/release.yml).
 
 ---
 
@@ -124,6 +170,7 @@ courselib/
     src/db/            # SQLite schema + open helpers
   static/              # icons and static assets
   scripts/validate.sh  # full validation pipeline
+  .github/workflows/   # CI release pipeline
 ```
 
 ---
