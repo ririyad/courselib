@@ -9,7 +9,9 @@ use tauri::{AppHandle, Manager};
 
 use crate::core::{
     git_vault,
-    models::{AppSettings, AppStatus, CourseManifest, WrittenCourse, WrittenSection},
+    models::{
+        AppSettings, AppStatus, CourseManifest, SectionProgressEntry, WrittenCourse, WrittenSection,
+    },
     parser::{parse_markdown_course, ParsedSection},
     source_fetch::FetchedMarkdown,
 };
@@ -116,6 +118,98 @@ pub fn write_fetched_course(vault_path: &Path, fetched: FetchedMarkdown) -> Resu
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReimportedCourse {
+    pub written: WrittenCourse,
+    pub orphaned_progress_paths: Vec<String>,
+}
+
+pub fn reimport_fetched_course(
+    vault_path: &Path,
+    course_slug: &str,
+    fetched: FetchedMarkdown,
+) -> Result<ReimportedCourse> {
+    ensure_vault(vault_path)?;
+
+    let course_path = vault_path.join("courses").join(course_slug);
+    let manifest_path = course_path.join("_course.yaml");
+    let progress_path = course_path.join("_progress.yaml");
+    let sections_path = course_path.join("sections");
+    let temp_sections_path = course_path.join("sections.__reimport");
+
+    if !manifest_path.is_file() {
+        anyhow::bail!("course manifest not found for {course_slug}");
+    }
+
+    let mut manifest: CourseManifest = read_yaml_file(&manifest_path)?;
+    let parsed = parse_markdown_course(&fetched.content, fetched.title_hint.as_deref());
+
+    if temp_sections_path.exists() {
+        fs::remove_dir_all(&temp_sections_path)
+            .with_context(|| format!("failed to remove {}", temp_sections_path.display()))?;
+    }
+    fs::create_dir_all(&temp_sections_path)
+        .with_context(|| format!("failed to create {}", temp_sections_path.display()))?;
+
+    let sections = write_sections(&temp_sections_path, &parsed.sections, &[])?;
+    let canonical_paths = written_canonical_paths(&sections);
+    let orphaned_progress_paths = prune_progress_file(&progress_path, &canonical_paths)?;
+
+    fs::write(course_path.join("_source.md"), &fetched.content)
+        .with_context(|| format!("failed to write source snapshot for {course_slug}"))?;
+
+    manifest.source = fetched.source;
+    let manifest_yaml =
+        serde_yaml::to_string(&manifest).context("failed to serialize course manifest")?;
+    fs::write(&manifest_path, manifest_yaml)
+        .with_context(|| format!("failed to write {}", manifest_path.display()))?;
+
+    if sections_path.exists() {
+        fs::remove_dir_all(&sections_path)
+            .with_context(|| format!("failed to remove {}", sections_path.display()))?;
+    }
+    fs::rename(&temp_sections_path, &sections_path).with_context(|| {
+        format!(
+            "failed to replace {} with {}",
+            sections_path.display(),
+            temp_sections_path.display()
+        )
+    })?;
+
+    Ok(ReimportedCourse {
+        written: WrittenCourse {
+            title: manifest.title,
+            slug: manifest.slug,
+            vault_path: course_path.to_string_lossy().into_owned(),
+            sections,
+        },
+        orphaned_progress_paths,
+    })
+}
+
+pub fn canonical_paths_for_markdown(markdown: &str, title_hint: Option<&str>) -> HashSet<String> {
+    let parsed = parse_markdown_course(markdown, title_hint);
+    let mut paths = HashSet::new();
+    collect_section_canonical_paths(&parsed.sections, &[], &mut paths);
+    paths
+}
+
+pub fn orphaned_progress_paths_for_markdown(
+    course_path: &Path,
+    markdown: &str,
+    title_hint: Option<&str>,
+) -> Result<Vec<String>> {
+    let canonical_paths = canonical_paths_for_markdown(markdown, title_hint);
+    let progress = read_progress_file(&course_path.join("_progress.yaml"))?;
+    let mut orphaned = progress
+        .keys()
+        .filter(|path| !canonical_paths.contains(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    orphaned.sort();
+    Ok(orphaned)
+}
+
 fn write_sections(
     base_path: &Path,
     sections: &[ParsedSection],
@@ -163,6 +257,75 @@ fn write_sections(
     }
 
     Ok(written)
+}
+
+fn collect_section_canonical_paths(
+    sections: &[ParsedSection],
+    parent_slugs: &[String],
+    paths: &mut HashSet<String>,
+) {
+    let mut used_slugs = HashSet::new();
+
+    for section in sections {
+        let section_slug = unique_sibling_slug(&section.title, &mut used_slugs);
+        let mut canonical_parts = parent_slugs.to_vec();
+        canonical_parts.push(section_slug);
+        paths.insert(canonical_parts.join("/"));
+        collect_section_canonical_paths(&section.children, &canonical_parts, paths);
+    }
+}
+
+fn written_canonical_paths(sections: &[WrittenSection]) -> HashSet<String> {
+    let mut paths = HashSet::new();
+    collect_written_canonical_paths(sections, &mut paths);
+    paths
+}
+
+fn collect_written_canonical_paths(sections: &[WrittenSection], paths: &mut HashSet<String>) {
+    for section in sections {
+        paths.insert(section.canonical_path.clone());
+        collect_written_canonical_paths(&section.children, paths);
+    }
+}
+
+fn read_progress_file(
+    path: &Path,
+) -> Result<std::collections::BTreeMap<String, SectionProgressEntry>> {
+    if !path.is_file() {
+        return Ok(std::collections::BTreeMap::new());
+    }
+
+    let contents =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_yaml::from_str(&contents).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+fn prune_progress_file(path: &Path, canonical_paths: &HashSet<String>) -> Result<Vec<String>> {
+    let mut progress = read_progress_file(path)?;
+    let mut orphaned = progress
+        .keys()
+        .filter(|progress_path| !canonical_paths.contains(*progress_path))
+        .cloned()
+        .collect::<Vec<_>>();
+    orphaned.sort();
+
+    if !orphaned.is_empty() {
+        progress.retain(|progress_path, _| canonical_paths.contains(progress_path));
+        let yaml = if progress.is_empty() {
+            "{}\n".to_string()
+        } else {
+            serde_yaml::to_string(&progress).context("failed to serialize progress")?
+        };
+        fs::write(path, yaml).with_context(|| format!("failed to write {}", path.display()))?;
+    }
+
+    Ok(orphaned)
+}
+
+fn read_yaml_file<T: for<'de> serde::Deserialize<'de>>(path: &Path) -> Result<T> {
+    let contents =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_yaml::from_str(&contents).with_context(|| format!("failed to parse {}", path.display()))
 }
 
 fn unique_course_slug(vault_path: &Path, title: &str) -> String {

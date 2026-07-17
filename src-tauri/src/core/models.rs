@@ -111,6 +111,25 @@ pub struct CourseDetail {
     pub sections: Vec<SectionNode>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SourceDriftStatus {
+    pub course_id: String,
+    pub source_available: bool,
+    pub changed: bool,
+    pub current_hash: Option<String>,
+    pub latest_hash: Option<String>,
+    pub origin_url: Option<String>,
+    pub checked_at: String,
+    pub orphaned_progress_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ReimportCourseResult {
+    pub course: CourseDetail,
+    pub orphaned_progress_paths: Vec<String>,
+    pub git_commit: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CoursePathSummary {
     pub id: String,
