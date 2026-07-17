@@ -35,11 +35,10 @@ pub fn parse_markdown_course(markdown: &str, title_hint: Option<&str>) -> Parsed
     headings.sort_by_key(|heading| heading.start_line);
 
     if headings.is_empty() {
-        let title = clean_title(title_hint.unwrap_or("Overview"));
         return ParsedCourse {
             title: clean_title(title_hint.unwrap_or("Untitled Course")),
             sections: vec![ParsedSection {
-                title,
+                title: "Overview".to_string(),
                 level: 1,
                 body: markdown.to_string(),
                 children: Vec::new(),
@@ -49,13 +48,14 @@ pub fn parse_markdown_course(markdown: &str, title_hint: Option<&str>) -> Parsed
 
     assign_parents(&mut headings);
 
-    let course_title = headings
-        .iter()
-        .find(|heading| heading.level == 1)
-        .or_else(|| headings.first())
-        .map(|heading| heading.title.clone())
-        .or_else(|| title_hint.map(clean_title))
-        .unwrap_or_else(|| "Untitled Course".to_string());
+    let course_title = title_hint.map(clean_title).unwrap_or_else(|| {
+        headings
+            .iter()
+            .find(|heading| heading.level == 1)
+            .or_else(|| headings.first())
+            .map(|heading| heading.title.clone())
+            .unwrap_or_else(|| "Untitled Course".to_string())
+    });
 
     let line_offsets = line_start_offsets(markdown);
     let total_lines = line_offsets.len();
@@ -279,8 +279,18 @@ mod tests {
 
         assert_eq!(course.title, "Loose Notes");
         assert_eq!(course.sections.len(), 1);
-        assert_eq!(course.sections[0].title, "Loose Notes");
+        assert_eq!(course.sections[0].title, "Overview");
         assert_eq!(course.sections[0].body, markdown);
+    }
+
+    #[test]
+    fn title_hint_overrides_heading_course_title() {
+        let markdown = "# Markdown Heading\n\n## Intro\n";
+
+        let course = parse_markdown_course(markdown, Some("Provided Title"));
+
+        assert_eq!(course.title, "Provided Title");
+        assert_eq!(course.sections[0].title, "Markdown Heading");
     }
 
     #[test]

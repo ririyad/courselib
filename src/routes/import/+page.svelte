@@ -3,7 +3,7 @@
   import { importCourse, type WrittenCourse } from '$lib/api';
 
   let mode = $state<'paste' | 'link'>('paste');
-  let titleHint = $state('');
+  let title = $state('');
   let markdown = $state('# My Course\n\n## Introduction\n\nStart here.');
   let url = $state('');
   let importing = $state(false);
@@ -16,7 +16,7 @@
     try {
       imported = await importCourse(
         mode === 'paste'
-          ? { Pasted: { content: markdown, title_hint: titleHint || null } }
+          ? { Pasted: { content: markdown, title_hint: title.trim() } }
           : { Link: { url } }
       );
       error = null;
@@ -65,8 +65,8 @@
 
     {#if mode === 'paste'}
       <label>
-        Title hint <span>(optional, used when the document has no headings)</span>
-        <input bind:value={titleHint} placeholder="My Learning Notes" />
+        Course title <span>(required, used as the course name)</span>
+        <input bind:value={title} placeholder="My Learning Notes" required />
       </label>
       <label>
         Markdown
@@ -89,7 +89,7 @@
         type="button"
         class:busy={importing}
         onclick={submit}
-        disabled={importing || (mode === 'paste' ? !markdown.trim() : !url.trim())}
+        disabled={importing || (mode === 'paste' ? !title.trim() || !markdown.trim() : !url.trim())}
       >
         {importing ? 'Importing…' : 'Import course'}
       </button>

@@ -136,7 +136,13 @@ pub async fn import_course(
         ImportCourseSource::Pasted {
             content,
             title_hint,
-        } => fetched_from_paste(content, title_hint),
+        } => {
+            let title = title_hint
+                .map(|title| title.trim().to_string())
+                .filter(|title| !title.is_empty())
+                .ok_or_else(|| "course title is required".to_string())?;
+            fetched_from_paste(content, Some(title))
+        }
     };
 
     let written =
