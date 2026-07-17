@@ -7,17 +7,20 @@
   import SectionTree from '$lib/components/SectionTree.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import {
+    checkSourceDrift,
     createCategory,
     getCourse,
     getSection,
     listCategories,
     markSectionStatus,
+    reimportCourse,
     updateCourseMeta,
     type Category,
     type CourseDetail,
     type ProgressStatus,
     type SectionContent,
-    type SectionNode
+    type SectionNode,
+    type SourceDriftStatus
   } from '$lib/api';
 
   let course = $state<CourseDetail | null>(null);
@@ -29,6 +32,9 @@
   let loadingSection = $state(false);
   let markingStatus = $state<ProgressStatus | null>(null);
   let updatingCategories = $state(false);
+  let drift = $state<SourceDriftStatus | null>(null);
+  let checkingDrift = $state(false);
+  let reimporting = $state(false);
   let error = $state<string | null>(null);
   let sidebarOpen = $state(false);
   let editingTitle = $state(false);
@@ -50,6 +56,7 @@
       if (first) {
         await selectSection(first);
       }
+      void checkDrift(false);
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -104,6 +111,64 @@
       }
       return { ...node, children: updateSectionStatus(node.children, id, status) };
     });
+  }
+
+  async function checkDrift(showErrors = true): Promise<SourceDriftStatus | null> {
+    if (!course) return null;
+
+    checkingDrift = true;
+    try {
+      drift = await checkSourceDrift(course.id);
+      if (showErrors) error = null;
+      return drift;
+    } catch (err) {
+      if (showErrors) error = err instanceof Error ? err.message : String(err);
+      return null;
+    } finally {
+      checkingDrift = false;
+    }
+  }
+
+  async function reimportWithConfirmation() {
+    if (!course || reimporting) return;
+
+    const status = drift ?? (await checkDrift(true));
+    if (!status?.source_available) {
+      error = 'This course has no source URL to re-import.';
+      return;
+    }
+
+    const orphanCount = status.orphaned_progress_paths.length;
+    const orphanText = orphanCount
+      ? `\n\n${orphanCount} progress entr${orphanCount === 1 ? 'y' : 'ies'} will be removed because the matching section no longer exists.`
+      : '';
+    const confirmed = window.confirm(
+      `Re-import “${course.title}” from its source? Current vault files will be committed to git before replacement.${orphanText}`
+    );
+    if (!confirmed) return;
+
+    const activeCanonicalPath = activeSectionNode?.canonical_path ?? null;
+    reimporting = true;
+    try {
+      const result = await reimportCourse(course.id);
+      course = result.course;
+      drift = null;
+      const nextSection =
+        (activeCanonicalPath ? findSectionByPath(course.sections, activeCanonicalPath) : null) ??
+        firstSection(course.sections);
+      if (nextSection) {
+        await selectSection(nextSection);
+      } else {
+        section = null;
+        activeSectionId = null;
+        activeSectionNode = null;
+      }
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      reimporting = false;
+    }
   }
 
   function findSection(nodes: SectionNode[], id: string): SectionNode | null {
@@ -217,6 +282,15 @@
     }
   }
 
+  function findSectionByPath(nodes: SectionNode[], canonicalPath: string): SectionNode | null {
+    for (const node of nodes) {
+      if (node.canonical_path === canonicalPath) return node;
+      const child = findSectionByPath(node.children, canonicalPath);
+      if (child) return child;
+    }
+    return null;
+  }
+
   function firstSection(nodes: SectionNode[]): SectionNode | null {
     for (const node of nodes) {
       return node;
@@ -316,6 +390,45 @@
           onToggle={toggleCategory}
           onCreate={addCategory}
         />
+      </details>
+
+      <details class="sidebar-disclosure source-panel">
+        <summary>Source</summary>
+        <div class="source-actions">
+          {#if drift?.changed}
+            <span class="drift-badge">Update available</span>
+          {:else if drift && drift.source_available}
+            <span class="drift-badge current">Current</span>
+          {:else if drift && !drift.source_available}
+            <span class="drift-badge muted-badge">Pasted source</span>
+          {/if}
+          <button
+            type="button"
+            class="ghost"
+            class:busy={checkingDrift}
+            onclick={() => checkDrift(true)}
+            disabled={checkingDrift || reimporting}
+          >{checkingDrift ? 'Checking…' : 'Check drift'}</button>
+          {#if drift?.source_available}
+            <button
+              type="button"
+              class="secondary"
+              class:busy={reimporting}
+              onclick={reimportWithConfirmation}
+              disabled={checkingDrift || reimporting}
+            >{reimporting ? 'Re-importing…' : 'Re-import'}</button>
+          {/if}
+        </div>
+        {#if drift?.changed}
+          <p class="muted">The upstream source hash differs from this course snapshot.</p>
+          {#if drift.orphaned_progress_paths.length}
+            <p class="warning-text">
+              {drift.orphaned_progress_paths.length} progress entr{drift.orphaned_progress_paths.length === 1 ? 'y' : 'ies'} will be removed on re-import.
+            </p>
+          {/if}
+        {:else if drift && !drift.source_available}
+          <p class="muted">Pasted courses do not have a remote source to check.</p>
+        {/if}
       </details>
 
       {#if course.sections.length}

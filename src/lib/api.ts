@@ -81,6 +81,23 @@ export type CourseDetail = {
   sections: SectionNode[];
 };
 
+export type SourceDriftStatus = {
+  course_id: string;
+  source_available: boolean;
+  changed: boolean;
+  current_hash: string | null;
+  latest_hash: string | null;
+  origin_url: string | null;
+  checked_at: string;
+  orphaned_progress_paths: string[];
+};
+
+export type ReimportCourseResult = {
+  course: CourseDetail;
+  orphaned_progress_paths: string[];
+  git_commit: string | null;
+};
+
 export type SectionContent = {
   id: string;
   course_id: string;
@@ -191,6 +208,14 @@ export function markSectionStatus(sectionId: string, status: ProgressStatus) {
 
 export function getCourseProgress(courseId: string) {
   return invoke<CourseProgress>('get_course_progress', { courseId });
+}
+
+export function checkSourceDrift(courseId: string) {
+  return invoke<SourceDriftStatus>('check_source_drift', { courseId });
+}
+
+export function reimportCourse(courseId: string) {
+  return invoke<ReimportCourseResult>('reimport_course', { courseId });
 }
 
 export function reindexVault() {
