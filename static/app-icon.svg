@@ -1,5 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#1d4f3a" />
-  <path d="M146 136h182c31 0 56 25 56 56v184H202c-31 0-56-25-56-56V136Z" fill="#fffaf0" />
-  <path d="M198 188h126M198 238h104M198 288h126" stroke="#1d4f3a" stroke-width="28" stroke-linecap="round" />
+<svg width="512" height="512" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>CourseLib logo mark</title>
+<desc>Rounded indigo square containing a white open-book icon with a teal bookmark ribbon.</desc>
+<rect x="0" y="0" width="192" height="192" rx="42" fill="#4338CA"/>
+<path d="M96,53.5 C66,61 41,68.5 38.5,83.5 L38.5,111 C41,123.5 66,131 96,138.5 Z" fill="#FFFFFF"/>
+<path d="M96,53.5 C126,61 151,68.5 153.5,83.5 L153.5,111 C151,123.5 126,131 96,138.5 Z" fill="#FFFFFF" opacity="0.94"/>
+<path d="M86,31 L106,31 L106,83.5 L96,71 L86,83.5 Z" fill="#14B8A6"/>
 </svg>
