@@ -111,6 +111,31 @@ pub struct CourseDetail {
     pub sections: Vec<SectionNode>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct CoursePathSummary {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub course_count: usize,
+    pub progress: CourseProgress,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct CoursePathDetail {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub courses: Vec<CoursePathItem>,
+    pub progress: CourseProgress,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct CoursePathItem {
+    pub course: CourseListItem,
+    pub order_index: usize,
+    pub optional: bool,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct SectionNode {
     pub id: String,

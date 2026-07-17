@@ -12,8 +12,9 @@ use tauri::{AppHandle, State};
 use crate::core::{
     indexer::{self, ReindexSummary},
     models::{
-        AppStatus, Category, CourseDetail, CourseListItem, CourseManifest, CourseProgress,
-        ProgressStatus, SectionContent, SectionNode, SectionProgressEntry, WrittenCourse,
+        AppStatus, Category, CourseDetail, CourseListItem, CourseManifest, CoursePathDetail,
+        CoursePathItem, CoursePathSummary, CourseProgress, ProgressStatus, SectionContent,
+        SectionNode, SectionProgressEntry, WrittenCourse,
     },
     source_fetch::{fetch_link, fetched_from_paste},
     vault,
@@ -42,6 +43,26 @@ pub struct CourseMetaPatch {
     pub title: Option<String>,
     pub description: Option<String>,
     pub categories: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PathOrderingItem {
+    pub course_id: String,
+    pub optional: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PathManifest {
+    title: String,
+    slug: String,
+    description: Option<String>,
+    courses: Vec<PathCourseManifest>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct PathCourseManifest {
+    slug: String,
+    optional: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -320,6 +341,187 @@ pub fn update_course_meta(
 }
 
 #[tauri::command]
+pub fn list_paths(state: State<'_, AppState>) -> Result<Vec<CoursePathSummary>, String> {
+    let conn = open_index(&state)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT cp.id, cp.slug, cp.title, COUNT(cpi.course_id)
+             FROM course_paths cp
+             LEFT JOIN course_path_items cpi ON cpi.course_path_id = cp.id
+             GROUP BY cp.id, cp.slug, cp.title
+             ORDER BY lower(cp.title)",
+        )
+        .map_err(|err| err.to_string())?;
+
+    let paths = stmt
+        .query_map([], |row| {
+            let id: String = row.get(0)?;
+            let progress = load_path_progress(&conn, &id).unwrap_or_else(|_| empty_progress());
+            Ok(CoursePathSummary {
+                id,
+                slug: row.get(1)?,
+                title: row.get(2)?,
+                course_count: row.get::<_, i64>(3)? as usize,
+                progress,
+            })
+        })
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+
+    Ok(paths)
+}
+
+#[tauri::command]
+pub fn create_path(state: State<'_, AppState>, title: String) -> Result<CoursePathSummary, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+    vault::ensure_vault(&vault_path).map_err(|err| err.to_string())?;
+
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("path title cannot be empty".to_string());
+    }
+
+    let slug = unique_path_slug(&vault_path, title);
+    let manifest = PathManifest {
+        title: title.to_string(),
+        slug: slug.clone(),
+        description: None,
+        courses: Vec::new(),
+    };
+    write_yaml_file(
+        &vault_path.join("paths").join(format!("{slug}.yaml")),
+        &manifest,
+    )
+    .map_err(|err| err.to_string())?;
+
+    let mut conn = open_index(&state)?;
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+    load_path_summary(&conn, &slug)
+}
+
+#[tauri::command]
+pub fn get_path(state: State<'_, AppState>, path_id: String) -> Result<CoursePathDetail, String> {
+    let conn = open_index(&state)?;
+    load_path_detail(&conn, &path_id)
+}
+
+#[tauri::command]
+pub fn add_course_to_path(
+    state: State<'_, AppState>,
+    path_id: String,
+    course_id: String,
+    order_index: Option<usize>,
+    optional: Option<bool>,
+) -> Result<CoursePathDetail, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+    let mut conn = open_index(&state)?;
+    let (indexed_path_id, path_slug, path_vault_path) = load_path_identity(&conn, &path_id)?;
+    let course_slug = conn
+        .query_row(
+            "SELECT slug FROM courses WHERE id = ?1 OR slug = ?1",
+            params![course_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "course not found".to_string())?;
+
+    let mut manifest = read_path_manifest(&PathBuf::from(path_vault_path))?;
+    manifest.courses.retain(|course| course.slug != course_slug);
+    let insert_at = order_index
+        .unwrap_or(manifest.courses.len())
+        .min(manifest.courses.len());
+    manifest.courses.insert(
+        insert_at,
+        PathCourseManifest {
+            slug: course_slug,
+            optional: optional.unwrap_or(false),
+        },
+    );
+    write_yaml_file(
+        &vault_path.join("paths").join(format!("{path_slug}.yaml")),
+        &manifest,
+    )
+    .map_err(|err| err.to_string())?;
+
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+    load_path_detail(&conn, &indexed_path_id)
+}
+
+#[tauri::command]
+pub fn reorder_path_items(
+    state: State<'_, AppState>,
+    path_id: String,
+    ordering: Vec<PathOrderingItem>,
+) -> Result<CoursePathDetail, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+    let mut conn = open_index(&state)?;
+    let (indexed_path_id, path_slug, path_vault_path) = load_path_identity(&conn, &path_id)?;
+    let mut manifest = read_path_manifest(&PathBuf::from(path_vault_path))?;
+    let current = manifest
+        .courses
+        .iter()
+        .map(|course| (course.slug.clone(), course.optional))
+        .collect::<BTreeMap<_, _>>();
+    let mut seen = HashSet::new();
+    let mut courses = Vec::new();
+
+    for item in ordering {
+        let course_slug = conn
+            .query_row(
+                "SELECT slug FROM courses WHERE id = ?1 OR slug = ?1",
+                params![item.course_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "course not found".to_string())?;
+        if !current.contains_key(&course_slug) {
+            return Err(format!("course is not in path: {course_slug}"));
+        }
+        if seen.insert(course_slug.clone()) {
+            courses.push(PathCourseManifest {
+                slug: course_slug.clone(),
+                optional: item.optional.unwrap_or(current[&course_slug]),
+            });
+        }
+    }
+
+    manifest.courses = courses;
+    write_yaml_file(
+        &vault_path.join("paths").join(format!("{path_slug}.yaml")),
+        &manifest,
+    )
+    .map_err(|err| err.to_string())?;
+
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+    load_path_detail(&conn, &indexed_path_id)
+}
+
+#[tauri::command]
+pub fn get_path_progress(
+    state: State<'_, AppState>,
+    path_id: String,
+) -> Result<CourseProgress, String> {
+    let conn = open_index(&state)?;
+    let (indexed_path_id, _, _) = load_path_identity(&conn, &path_id)?;
+    load_path_progress(&conn, &indexed_path_id).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 pub fn mark_section_status(
     state: State<'_, AppState>,
     section_id: String,
@@ -429,6 +631,161 @@ fn load_course_detail(conn: &Connection, course_id: &str) -> Result<CourseDetail
         progress,
         sections,
     })
+}
+
+fn load_course_list_item(conn: &Connection, course_id: &str) -> Result<CourseListItem, String> {
+    let (id, slug, title, description, section_count) = conn
+        .query_row(
+            "SELECT c.id, c.slug, c.title, c.description, COUNT(cs.id)
+             FROM courses c
+             LEFT JOIN course_sections cs ON cs.course_id = c.id
+             WHERE c.id = ?1 OR c.slug = ?1
+             GROUP BY c.id, c.slug, c.title, c.description",
+            params![course_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, i64>(4)? as usize,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "course not found".to_string())?;
+
+    Ok(CourseListItem {
+        categories: load_course_categories(conn, &id).map_err(|err| err.to_string())?,
+        progress: load_course_progress(conn, &id).map_err(|err| err.to_string())?,
+        id,
+        slug,
+        title,
+        description,
+        section_count,
+    })
+}
+
+fn load_path_identity(
+    conn: &Connection,
+    path_id: &str,
+) -> Result<(String, String, String), String> {
+    conn.query_row(
+        "SELECT id, slug, vault_path FROM course_paths WHERE id = ?1 OR slug = ?1",
+        params![path_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )
+    .optional()
+    .map_err(|err| err.to_string())?
+    .ok_or_else(|| "path not found".to_string())
+}
+
+fn load_path_summary(conn: &Connection, path_id: &str) -> Result<CoursePathSummary, String> {
+    let (id, slug, title, course_count) = conn
+        .query_row(
+            "SELECT cp.id, cp.slug, cp.title, COUNT(cpi.course_id)
+             FROM course_paths cp
+             LEFT JOIN course_path_items cpi ON cpi.course_path_id = cp.id
+             WHERE cp.id = ?1 OR cp.slug = ?1
+             GROUP BY cp.id, cp.slug, cp.title",
+            params![path_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)? as usize,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "path not found".to_string())?;
+
+    Ok(CoursePathSummary {
+        progress: load_path_progress(conn, &id).map_err(|err| err.to_string())?,
+        id,
+        slug,
+        title,
+        course_count,
+    })
+}
+
+fn load_path_detail(conn: &Connection, path_id: &str) -> Result<CoursePathDetail, String> {
+    let summary = load_path_summary(conn, path_id)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT c.id, cpi.order_index, cpi.is_optional
+             FROM course_path_items cpi
+             JOIN courses c ON c.id = cpi.course_id
+             WHERE cpi.course_path_id = ?1
+             ORDER BY cpi.order_index",
+        )
+        .map_err(|err| err.to_string())?;
+    let rows = stmt
+        .query_map(params![summary.id.clone()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)? as usize,
+                row.get::<_, i64>(2)? != 0,
+            ))
+        })
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+
+    let mut courses = Vec::new();
+    for (course_id, order_index, optional) in rows {
+        courses.push(CoursePathItem {
+            course: load_course_list_item(conn, &course_id)?,
+            order_index,
+            optional,
+        });
+    }
+
+    Ok(CoursePathDetail {
+        id: summary.id,
+        slug: summary.slug,
+        title: summary.title,
+        courses,
+        progress: summary.progress,
+    })
+}
+
+fn load_path_progress(conn: &Connection, path_id: &str) -> rusqlite::Result<CourseProgress> {
+    let (total, not_started, in_progress, completed) = conn.query_row(
+        "SELECT COUNT(cs.id),
+                COALESCE(SUM(CASE WHEN COALESCE(sp.status, 'not_started') = 'not_started' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN sp.status = 'in_progress' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN sp.status = 'completed' THEN 1 ELSE 0 END), 0)
+         FROM course_path_items cpi
+         JOIN course_sections cs ON cs.course_id = cpi.course_id
+         LEFT JOIN section_progress sp ON sp.section_id = cs.id
+         WHERE cpi.course_path_id = ?1",
+        params![path_id],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        },
+    )?;
+
+    Ok(course_progress_from_counts(
+        total as usize,
+        not_started as usize,
+        in_progress as usize,
+        completed as usize,
+    ))
 }
 
 fn load_course_categories(conn: &Connection, course_id: &str) -> rusqlite::Result<Vec<String>> {
@@ -589,6 +946,31 @@ fn write_categories_file(path: &std::path::Path, categories: &[Category]) -> any
     let mut categories = categories.to_vec();
     categories.sort_by_key(|category| category.name.to_lowercase());
     write_yaml_file(path, &categories)
+}
+
+fn read_path_manifest(path: &std::path::Path) -> Result<PathManifest, String> {
+    read_yaml_file(path).map_err(|err| err.to_string())
+}
+
+fn unique_path_slug(vault_path: &std::path::Path, title: &str) -> String {
+    let base = {
+        let slug = slug::slugify(title);
+        if slug.is_empty() {
+            "path".to_string()
+        } else {
+            slug
+        }
+    };
+    let paths_dir = vault_path.join("paths");
+    let mut candidate = base.clone();
+    let mut suffix = 2;
+
+    while paths_dir.join(format!("{candidate}.yaml")).exists() {
+        candidate = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+
+    candidate
 }
 
 fn unique_category_slug(name: &str, categories: &[Category]) -> String {

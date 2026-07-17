@@ -90,6 +90,33 @@ export type SectionContent = {
   html: string;
 };
 
+export type CoursePathSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  course_count: number;
+  progress: CourseProgress;
+};
+
+export type CoursePathItem = {
+  course: CourseListItem;
+  order_index: number;
+  optional: boolean;
+};
+
+export type CoursePathDetail = {
+  id: string;
+  slug: string;
+  title: string;
+  courses: CoursePathItem[];
+  progress: CourseProgress;
+};
+
+export type PathOrderingItem = {
+  course_id: string;
+  optional?: boolean;
+};
+
 export function getAppStatus() {
   return invoke<AppStatus>('get_app_status');
 }
@@ -127,6 +154,35 @@ export function listCategories() {
 
 export function createCategory(name: string) {
   return invoke<Category>('create_category', { name });
+}
+
+export function listPaths() {
+  return invoke<CoursePathSummary[]>('list_paths');
+}
+
+export function createPath(title: string) {
+  return invoke<CoursePathSummary>('create_path', { title });
+}
+
+export function getPath(pathId: string) {
+  return invoke<CoursePathDetail>('get_path', { pathId });
+}
+
+export function addCourseToPath(
+  pathId: string,
+  courseId: string,
+  orderIndex?: number,
+  optional?: boolean
+) {
+  return invoke<CoursePathDetail>('add_course_to_path', { pathId, courseId, orderIndex, optional });
+}
+
+export function reorderPathItems(pathId: string, ordering: PathOrderingItem[]) {
+  return invoke<CoursePathDetail>('reorder_path_items', { pathId, ordering });
+}
+
+export function getPathProgress(pathId: string) {
+  return invoke<CourseProgress>('get_path_progress', { pathId });
 }
 
 export function markSectionStatus(sectionId: string, status: ProgressStatus) {

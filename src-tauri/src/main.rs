@@ -46,6 +46,12 @@ fn main() {
             commands::update_course_meta,
             commands::list_categories,
             commands::create_category,
+            commands::list_paths,
+            commands::create_path,
+            commands::get_path,
+            commands::add_course_to_path,
+            commands::reorder_path_items,
+            commands::get_path_progress,
             commands::mark_section_status,
             commands::get_course_progress,
             commands::reindex_vault
