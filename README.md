@@ -65,7 +65,7 @@ The app opens a native window. On first use it creates a default vault (via `dir
 
 ## Releases
 
-Published builds ship via **GitHub Releases**. CI currently builds **macOS** (Apple Silicon + Intel). Linux/Windows can be added to the same workflow later.
+Published builds ship via **GitHub Releases**. CI currently builds **macOS** (Apple Silicon on `macos-latest`, Intel on `macos-13`). Linux/Windows can be added to the same workflow later.
 
 | Surface | Purpose |
 |---------|---------|

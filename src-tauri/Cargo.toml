@@ -18,7 +18,8 @@ anyhow = "1.0.99"
 chrono = { version = "0.4.41", features = ["serde"] }
 comrak = "0.41.0"
 dirs = "6.0.0"
-git2 = "0.20.2"
+# vendored-openssl: avoid system OpenSSL (required for CI cross/native mac builds)
+git2 = { version = "0.20.2", features = ["vendored-openssl"] }
 notify = "8.2.0"
 reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.37.0", features = ["bundled"] }

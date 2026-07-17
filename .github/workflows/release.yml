@@ -1,6 +1,8 @@
 # Build macOS CourseLib bundles and publish a GitHub Release.
 # Deploy log: Actions tab → this workflow run.
 # Trigger: push a version tag (v0.1.0) or run manually via workflow_dispatch.
+#
+# Each arch builds natively (no arm64→x64 cross-compile) to avoid OpenSSL/sysroot issues.
 
 name: Release
 
@@ -20,11 +22,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Apple Silicon runners (macos-14+)
           - name: macOS arm64
             platform: macos-latest
+            rust_target: aarch64-apple-darwin
             args: '--target aarch64-apple-darwin'
+          # Intel runners — avoid cross-compiling x86_64 from arm64
           - name: macOS x64
-            platform: macos-latest
+            platform: macos-13
+            rust_target: x86_64-apple-darwin
             args: '--target x86_64-apple-darwin'
 
     runs-on: ${{ matrix.platform }}
@@ -44,12 +50,13 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          shared-key: ${{ matrix.rust_target }}
 
       - name: Install frontend dependencies
         run: npm ci
@@ -68,7 +75,6 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${{ steps.version.outputs.version }}"
-          # Prefer GitHub auto-notes when this tag (or draft) can be compared.
           if BODY=$(gh api repos/${{ github.repository }}/releases/generate-notes \
             -f tag_name="$TAG" \
             -f target_commitish="${{ github.sha }}" \
