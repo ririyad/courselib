@@ -10,11 +10,12 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::core::{
+    git_vault,
     indexer::{self, ReindexSummary},
     models::{
         AppStatus, Category, CourseDetail, CourseListItem, CourseManifest, CoursePathDetail,
-        CoursePathItem, CoursePathSummary, CourseProgress, ProgressStatus, SectionContent,
-        SectionNode, SectionProgressEntry, WrittenCourse,
+        CoursePathItem, CoursePathSummary, CourseProgress, ProgressStatus, ReimportCourseResult,
+        SectionContent, SectionNode, SectionProgressEntry, SourceDriftStatus, WrittenCourse,
     },
     source_fetch::{fetch_link, fetched_from_paste},
     vault,
@@ -75,6 +76,15 @@ struct FlatSectionRow {
     order_index: usize,
     status: ProgressStatus,
     completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CourseSourceIdentity {
+    id: String,
+    slug: String,
+    vault_path: String,
+    origin_url: Option<String>,
+    content_hash: Option<String>,
 }
 
 #[tauri::command]
@@ -581,6 +591,94 @@ pub fn get_course_progress(
 }
 
 #[tauri::command]
+pub async fn check_source_drift(
+    state: State<'_, AppState>,
+    course_id: String,
+) -> Result<SourceDriftStatus, String> {
+    let conn = open_index(&state)?;
+    let source = load_course_source_identity(&conn, &course_id)?;
+
+    let checked_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let Some(origin_url) = source.origin_url.clone() else {
+        return Ok(SourceDriftStatus {
+            course_id: source.id,
+            source_available: false,
+            changed: false,
+            current_hash: source.content_hash,
+            latest_hash: None,
+            origin_url: None,
+            checked_at,
+            orphaned_progress_paths: Vec::new(),
+        });
+    };
+
+    let fetched = fetch_link(&origin_url)
+        .await
+        .map_err(|err| err.to_string())?;
+    let latest_hash = fetched.source.content_hash.clone();
+    let changed = source.content_hash.as_deref() != Some(latest_hash.as_str());
+    let orphaned_progress_paths = if changed {
+        vault::orphaned_progress_paths_for_markdown(
+            &PathBuf::from(&source.vault_path),
+            &fetched.content,
+            fetched.title_hint.as_deref(),
+        )
+        .map_err(|err| err.to_string())?
+    } else {
+        Vec::new()
+    };
+
+    Ok(SourceDriftStatus {
+        course_id: source.id,
+        source_available: true,
+        changed,
+        current_hash: source.content_hash,
+        latest_hash: Some(latest_hash),
+        origin_url: Some(origin_url),
+        checked_at,
+        orphaned_progress_paths,
+    })
+}
+
+#[tauri::command]
+pub async fn reimport_course(
+    state: State<'_, AppState>,
+    course_id: String,
+) -> Result<ReimportCourseResult, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+
+    let mut conn = open_index(&state)?;
+    let source = load_course_source_identity(&conn, &course_id)?;
+    let origin_url = source.origin_url.clone().ok_or_else(|| {
+        "pasted courses cannot be re-imported because they have no source URL".to_string()
+    })?;
+
+    let fetched = fetch_link(&origin_url)
+        .await
+        .map_err(|err| err.to_string())?;
+    let git_commit = git_vault::commit_all(
+        &vault_path,
+        &format!("Snapshot before re-importing {}", source.slug),
+    )
+    .map_err(|err| err.to_string())?;
+
+    let reimported = vault::reimport_fetched_course(&vault_path, &source.slug, fetched)
+        .map_err(|err| err.to_string())?;
+    indexer::reindex_course(&mut conn, &vault_path, &source.slug).map_err(|err| err.to_string())?;
+    let course = load_course_detail(&conn, &source.id)?;
+
+    Ok(ReimportCourseResult {
+        course,
+        orphaned_progress_paths: reimported.orphaned_progress_paths,
+        git_commit,
+    })
+}
+
+#[tauri::command]
 pub fn reindex_vault(state: State<'_, AppState>) -> Result<ReindexSummary, String> {
     let vault_path = state
         .vault_path
@@ -597,6 +695,30 @@ fn open_index(state: &State<'_, AppState>) -> Result<Connection, String> {
     let conn = db::open(state.db_path()).map_err(|err| err.to_string())?;
     db::apply_schema(&conn).map_err(|err| err.to_string())?;
     Ok(conn)
+}
+
+fn load_course_source_identity(
+    conn: &Connection,
+    course_id: &str,
+) -> Result<CourseSourceIdentity, String> {
+    conn.query_row(
+        "SELECT id, slug, vault_path, origin_url, content_hash
+         FROM courses
+         WHERE id = ?1 OR slug = ?1",
+        params![course_id],
+        |row| {
+            Ok(CourseSourceIdentity {
+                id: row.get(0)?,
+                slug: row.get(1)?,
+                vault_path: row.get(2)?,
+                origin_url: row.get(3)?,
+                content_hash: row.get(4)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|err| err.to_string())?
+    .ok_or_else(|| "course not found".to_string())
 }
 
 fn load_course_detail(conn: &Connection, course_id: &str) -> Result<CourseDetail, String> {

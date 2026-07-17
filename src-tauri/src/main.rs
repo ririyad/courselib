@@ -54,6 +54,8 @@ fn main() {
             commands::get_path_progress,
             commands::mark_section_status,
             commands::get_course_progress,
+            commands::check_source_drift,
+            commands::reimport_course,
             commands::reindex_vault
         ])
         .run(tauri::generate_context!())
