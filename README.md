@@ -14,6 +14,9 @@ Built with **Tauri 2** (Rust) + **SvelteKit**.
 - **Library view** with progress bars and category filters
 - **Reader** with a section tree, rendered HTML, and per-section status (not started / in progress / completed)
 - **Editable course titles** and category tagging
+- **Course deletion** with path cleanup and a vault snapshot before removal
+- **Learning paths** for sequencing courses into curricula, with rolled-up progress
+- **Source drift checks and manual re-import** for courses imported from supported links
 - **Vault on disk** — plain files you can browse, back up, or version yourself
 - Works **offline after import** (network is only used when fetching a source link)
 
@@ -76,7 +79,7 @@ Published builds ship via **GitHub Releases**. CI currently builds **macOS** arm
 
 1. Open the [latest release](https://github.com/ririyad/courselib/releases/latest).
 2. Download the macOS asset that matches your chip (arm64 / Apple Silicon, or x64 / Intel).
-3. Open the app. If macOS blocks an unsigned build, use **Right-click → Open** (or System Settings → Privacy & Security). Apple notarization is not configured for v0.1.
+3. Open the app. If macOS blocks an unsigned build, use **Right-click → Open** (or System Settings → Privacy & Security). Apple notarization is not configured yet.
 
 ### Publish a release (maintainers)
 
@@ -130,7 +133,7 @@ vault/
       _course.yaml        # title, categories, source metadata
       _progress.yaml      # section completion by canonical path
       sections/           # heading tree as folders + markdown files
-  paths/                  # curricula (backend-ready; UI later)
+  paths/                  # curricula / learning paths
   categories.yaml
   .vaultgit/              # local git history for the vault
 ```
@@ -145,12 +148,16 @@ Section order uses numeric prefixes; progress keys use **canonical paths** (pref
 |------|--------|
 | Import (paste + URL) | Available |
 | Library + category filters | Available |
+| Tile / list library views | Available |
 | Course reader + progress | Available |
 | Categories create / assign | Available |
 | Rename course title | Available |
-| Paths / curricula UI | Planned |
+| Course deletion | Available |
+| Paths / curricula UI | Available |
+| Source drift check | Available |
+| Manual source re-import | Available |
+| Search index | Available in SQLite |
 | Search UI | Planned |
-| Source drift / re-import | Planned |
 
 Architecture, schema, IPC surface, and milestone plan live in [`AGENT.md`](./AGENT.md) for contributors.
 
@@ -161,7 +168,7 @@ Architecture, schema, IPC surface, and milestone plan live in [`AGENT.md`](./AGE
 ```
 courselib/
   src/                 # SvelteKit frontend
-    routes/            # library, import, course reader
+    routes/            # library, import, course reader, paths
     lib/api.ts         # typed Tauri invoke wrappers
     lib/components/    # UI pieces
   src-tauri/           # Rust backend
