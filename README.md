@@ -139,4 +139,4 @@ courselib/
 
 ## License
 
-Private / unlicensed unless otherwise stated by the repository owner.
+This project is licensed under the [MIT License](./LICENSE).
