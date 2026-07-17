@@ -4,16 +4,20 @@
   import CourseCard from '$lib/components/CourseCard.svelte';
   import {
     getAppStatus,
+    listCategories,
     listCourses,
     reindexVault,
     setVaultPath,
     type AppStatus,
+    type Category,
     type CourseListItem,
     type ReindexSummary
   } from '$lib/api';
 
   let status = $state<AppStatus | null>(null);
   let courses = $state<CourseListItem[]>([]);
+  let categories = $state<Category[]>([]);
+  let selectedCategory = $state<string | null>(null);
   let reindexSummary = $state<ReindexSummary | null>(null);
   let error = $state<string | null>(null);
   let choosing = $state(false);
@@ -22,6 +26,7 @@
 
   onMount(async () => {
     await refreshStatus();
+    await refreshCategories();
     await refreshCourses();
   });
 
@@ -34,10 +39,22 @@
     }
   }
 
+  async function refreshCategories() {
+    try {
+      categories = await listCategories();
+      if (selectedCategory && !categories.some((category) => category.slug === selectedCategory)) {
+        selectedCategory = null;
+      }
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
   async function refreshCourses() {
     loadingCourses = true;
     try {
-      courses = await listCourses();
+      courses = await listCourses(selectedCategory ? { category: selectedCategory } : undefined);
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -53,6 +70,7 @@
       if (typeof selected === 'string') {
         status = await setVaultPath(selected);
         reindexSummary = null;
+        await refreshCategories();
         await refreshCourses();
       }
       error = null;
@@ -67,6 +85,7 @@
     reindexing = true;
     try {
       reindexSummary = await reindexVault();
+      await refreshCategories();
       await refreshCourses();
       error = null;
     } catch (err) {
@@ -75,14 +94,19 @@
       reindexing = false;
     }
   }
+
+  async function selectCategory(slug: string | null) {
+    selectedCategory = slug;
+    await refreshCourses();
+  }
 </script>
 
 <main class="page">
   <section class="hero library-hero">
-    <p class="eyebrow">CourseLib · Milestone 4</p>
+    <p class="eyebrow">CourseLib · Milestone 5</p>
     <h1>Local-first course library</h1>
     <p class="lede">
-      Import markdown, read indexed courses, and track section progress from your vault.
+      Import markdown, read indexed courses, track progress, and organize your library by category.
     </p>
     <div class="actions">
       <a class="button" href="/import">Import Course</a>
@@ -119,8 +143,23 @@
   <section class="section-header">
     <div>
       <p class="eyebrow">Library</p>
-      <h2>Your courses</h2>
+      <h2>{selectedCategory ? 'Filtered courses' : 'Your courses'}</h2>
     </div>
+  </section>
+
+  <section class="filter-bar" aria-label="Category filters">
+    <button
+      type="button"
+      class:active={selectedCategory === null}
+      onclick={() => selectCategory(null)}
+    >All</button>
+    {#each categories as category}
+      <button
+        type="button"
+        class:active={selectedCategory === category.slug}
+        onclick={() => selectCategory(category.slug)}
+      >{category.name}</button>
+    {/each}
   </section>
 
   {#if loadingCourses}
@@ -134,8 +173,16 @@
   {:else}
     <section class="empty-state">
       <h2>No courses yet</h2>
-      <p>Import pasted markdown or a supported GitHub/GitLab/Codeberg link to create your first course.</p>
-      <a class="button" href="/import">Import your first course</a>
+      <p>
+        {selectedCategory
+          ? 'No courses match this category yet.'
+          : 'Import pasted markdown or a supported GitHub/GitLab/Codeberg link to create your first course.'}
+      </p>
+      {#if selectedCategory}
+        <button type="button" class="secondary" onclick={() => selectCategory(null)}>Clear filter</button>
+      {:else}
+        <a class="button" href="/import">Import your first course</a>
+      {/if}
     </section>
   {/if}
 </main>

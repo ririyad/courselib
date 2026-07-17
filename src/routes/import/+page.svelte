@@ -30,7 +30,7 @@
 <main class="page narrow">
   <header class="section-header">
     <div>
-      <p class="eyebrow">Milestone 4</p>
+      <p class="eyebrow">Milestone 5</p>
       <h1>Import course</h1>
       <p class="lede">Paste markdown directly or fetch a supported repository markdown link.</p>
     </div>

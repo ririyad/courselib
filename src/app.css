@@ -247,6 +247,63 @@ dd {
   padding: 0.3rem 0.6rem;
 }
 
+.filter-bar,
+.category-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filter-bar {
+  margin: -0.25rem 0 1.5rem;
+}
+
+.filter-bar button,
+.category-options button {
+  background: #eadfc8;
+  color: #536047;
+  padding: 0.55rem 0.8rem;
+}
+
+.filter-bar button.active,
+.category-options button.active {
+  background: #1d4f3a;
+  color: white;
+}
+
+.category-picker {
+  border: 1px solid #eadfc8;
+  border-radius: 20px;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.category-picker-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.category-picker-header .eyebrow {
+  margin: 0;
+}
+
+.category-picker-header span {
+  color: #758071;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.inline-create {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.inline-create input {
+  min-width: 0;
+}
+
 .form-card {
   display: grid;
   gap: 1rem;

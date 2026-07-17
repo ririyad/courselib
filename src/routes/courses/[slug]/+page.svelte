@@ -1,11 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import CategoryPicker from '$lib/components/CategoryPicker.svelte';
   import ProgressBar from '$lib/components/ProgressBar.svelte';
   import SectionTree from '$lib/components/SectionTree.svelte';
   import {
+    createCategory,
     getCourse,
     getSection,
+    listCategories,
     markSectionStatus,
+    updateCourseMeta,
+    type Category,
     type CourseDetail,
     type ProgressStatus,
     type SectionContent,
@@ -13,18 +18,22 @@
   } from '$lib/api';
 
   let course = $state<CourseDetail | null>(null);
+  let categories = $state<Category[]>([]);
   let section = $state<SectionContent | null>(null);
   let activeSectionId = $state<string | null>(null);
   let activeSectionNode = $state<SectionNode | null>(null);
   let loading = $state(true);
   let loadingSection = $state(false);
   let markingStatus = $state<ProgressStatus | null>(null);
+  let updatingCategories = $state(false);
   let error = $state<string | null>(null);
 
   onMount(async () => {
     const slug = decodeURIComponent(window.location.pathname.split('/').filter(Boolean).pop() ?? '');
     try {
-      course = await getCourse(slug);
+      const [loadedCourse, loadedCategories] = await Promise.all([getCourse(slug), listCategories()]);
+      course = loadedCourse;
+      categories = loadedCategories;
       const first = firstSection(course.sections);
       if (first) {
         await selectSection(first);
@@ -93,6 +102,46 @@
     return null;
   }
 
+  async function toggleCategory(slug: string) {
+    if (!course) return;
+
+    const selected = new Set(course.categories);
+    if (selected.has(slug)) {
+      selected.delete(slug);
+    } else {
+      selected.add(slug);
+    }
+
+    updatingCategories = true;
+    try {
+      course = await updateCourseMeta(course.id, { categories: Array.from(selected) });
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      updatingCategories = false;
+    }
+  }
+
+  async function addCategory(name: string) {
+    if (!course) return;
+
+    updatingCategories = true;
+    try {
+      const category = await createCategory(name);
+      categories = await listCategories();
+      course = await updateCourseMeta(course.id, {
+        categories: Array.from(new Set([...course.categories, category.slug]))
+      });
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      throw err;
+    } finally {
+      updatingCategories = false;
+    }
+  }
+
   function firstSection(nodes: SectionNode[]): SectionNode | null {
     for (const node of nodes) {
       return node;
@@ -120,13 +169,13 @@
 
       <ProgressBar progress={course.progress} />
 
-      {#if course.categories.length}
-        <div class="chips">
-          {#each course.categories as category}
-            <span>{category}</span>
-          {/each}
-        </div>
-      {/if}
+      <CategoryPicker
+        {categories}
+        selected={course.categories}
+        disabled={updatingCategories}
+        onToggle={toggleCategory}
+        onCreate={addCategory}
+      />
 
       {#if course.sections.length}
         <SectionTree sections={course.sections} {activeSectionId} onSelect={selectSection} />
