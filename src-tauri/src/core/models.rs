@@ -59,7 +59,31 @@ pub struct WrittenSection {
     pub children: Vec<WrittenSection>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgressStatus {
+    NotStarted,
+    InProgress,
+    Completed,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SectionProgressEntry {
+    pub status: ProgressStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct CourseProgress {
+    pub total_sections: usize,
+    pub not_started: usize,
+    pub in_progress: usize,
+    pub completed: usize,
+    pub percent_complete: f64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CourseListItem {
     pub id: String,
     pub slug: String,
@@ -67,15 +91,17 @@ pub struct CourseListItem {
     pub description: Option<String>,
     pub categories: Vec<String>,
     pub section_count: usize,
+    pub progress: CourseProgress,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CourseDetail {
     pub id: String,
     pub slug: String,
     pub title: String,
     pub description: Option<String>,
     pub categories: Vec<String>,
+    pub progress: CourseProgress,
     pub sections: Vec<SectionNode>,
 }
 
@@ -86,6 +112,8 @@ pub struct SectionNode {
     pub title: String,
     pub heading_level: u8,
     pub order_index: usize,
+    pub status: ProgressStatus,
+    pub completed_at: Option<String>,
     pub children: Vec<SectionNode>,
 }
 

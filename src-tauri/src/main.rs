@@ -43,6 +43,8 @@ fn main() {
             commands::list_courses,
             commands::get_course,
             commands::get_section,
+            commands::mark_section_status,
+            commands::get_course_progress,
             commands::reindex_vault
         ])
         .run(tauri::generate_context!())

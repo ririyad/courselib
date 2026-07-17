@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
+use chrono::{SecondsFormat, Utc};
 use comrak::{markdown_to_html, Options};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
@@ -7,7 +8,10 @@ use tauri::{AppHandle, State};
 
 use crate::core::{
     indexer::{self, ReindexSummary},
-    models::{AppStatus, CourseDetail, CourseListItem, SectionContent, SectionNode, WrittenCourse},
+    models::{
+        AppStatus, CourseDetail, CourseListItem, CourseProgress, ProgressStatus, SectionContent,
+        SectionNode, SectionProgressEntry, WrittenCourse,
+    },
     source_fetch::{fetch_link, fetched_from_paste},
     vault,
 };
@@ -38,6 +42,8 @@ struct FlatSectionRow {
     title: String,
     heading_level: u8,
     order_index: usize,
+    status: ProgressStatus,
+    completed_at: Option<String>,
 }
 
 #[tauri::command]
@@ -131,6 +137,8 @@ pub fn list_courses(
             params![if include_archived { 1 } else { 0 }, filter.category],
             |row| {
                 let id: String = row.get(0)?;
+                let progress =
+                    load_course_progress(&conn, &id).unwrap_or_else(|_| empty_progress());
                 Ok(CourseListItem {
                     categories: load_course_categories(&conn, &id).unwrap_or_default(),
                     id,
@@ -138,6 +146,7 @@ pub fn list_courses(
                     title: row.get(2)?,
                     description: row.get(3)?,
                     section_count: row.get::<_, i64>(4)? as usize,
+                    progress,
                 })
             },
         )
@@ -171,6 +180,7 @@ pub fn get_course(state: State<'_, AppState>, course_id: String) -> Result<Cours
     let rows = load_section_rows(&conn, &course.0)?;
     let sections = build_section_tree(&rows, None);
     let categories = load_course_categories(&conn, &course.0).map_err(|err| err.to_string())?;
+    let progress = load_course_progress(&conn, &course.0).map_err(|err| err.to_string())?;
 
     Ok(CourseDetail {
         id: course.0,
@@ -178,6 +188,7 @@ pub fn get_course(state: State<'_, AppState>, course_id: String) -> Result<Cours
         title: course.2,
         description: course.3,
         categories,
+        progress,
         sections,
     })
 }
@@ -222,6 +233,65 @@ pub fn get_section(
 }
 
 #[tauri::command]
+pub fn mark_section_status(
+    state: State<'_, AppState>,
+    section_id: String,
+    status: ProgressStatus,
+) -> Result<CourseProgress, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+
+    let mut conn = open_index(&state)?;
+    let (course_id, course_slug, course_vault_path, canonical_path) = conn
+        .query_row(
+            "SELECT c.id, c.slug, c.vault_path, cs.canonical_path
+             FROM course_sections cs
+             JOIN courses c ON c.id = cs.course_id
+             WHERE cs.id = ?1",
+            params![section_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "section not found".to_string())?;
+
+    let progress_path = PathBuf::from(course_vault_path).join("_progress.yaml");
+    write_progress_entry(&progress_path, &canonical_path, status).map_err(|err| err.to_string())?;
+
+    indexer::reindex_course(&mut conn, &vault_path, &course_slug).map_err(|err| err.to_string())?;
+    load_course_progress(&conn, &course_id).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub fn get_course_progress(
+    state: State<'_, AppState>,
+    course_id: String,
+) -> Result<CourseProgress, String> {
+    let conn = open_index(&state)?;
+    let indexed_course_id = conn
+        .query_row(
+            "SELECT id FROM courses WHERE id = ?1 OR slug = ?1",
+            params![course_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "course not found".to_string())?;
+
+    load_course_progress(&conn, &indexed_course_id).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 pub fn reindex_vault(state: State<'_, AppState>) -> Result<ReindexSummary, String> {
     let vault_path = state
         .vault_path
@@ -257,10 +327,12 @@ fn load_course_categories(conn: &Connection, course_id: &str) -> rusqlite::Resul
 fn load_section_rows(conn: &Connection, course_id: &str) -> Result<Vec<FlatSectionRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, parent_section_id, canonical_path, title, heading_level, order_index
-             FROM course_sections
-             WHERE course_id = ?1
-             ORDER BY parent_section_id, order_index",
+            "SELECT cs.id, cs.parent_section_id, cs.canonical_path, cs.title, cs.heading_level,
+                    cs.order_index, COALESCE(sp.status, 'not_started'), sp.completed_at
+             FROM course_sections cs
+             LEFT JOIN section_progress sp ON sp.section_id = cs.id
+             WHERE cs.course_id = ?1
+             ORDER BY cs.parent_section_id, cs.order_index",
         )
         .map_err(|err| err.to_string())?;
 
@@ -273,6 +345,8 @@ fn load_section_rows(conn: &Connection, course_id: &str) -> Result<Vec<FlatSecti
                 title: row.get(3)?,
                 heading_level: row.get::<_, i64>(4)? as u8,
                 order_index: row.get::<_, i64>(5)? as usize,
+                status: progress_status_from_str(&row.get::<_, String>(6)?),
+                completed_at: row.get(7)?,
             })
         })
         .map_err(|err| err.to_string())?
@@ -298,8 +372,106 @@ fn build_section_tree(rows: &[FlatSectionRow], parent_id: Option<&str>) -> Vec<S
             title: row.title,
             heading_level: row.heading_level,
             order_index: row.order_index,
+            status: row.status,
+            completed_at: row.completed_at,
         })
         .collect()
+}
+
+fn load_course_progress(conn: &Connection, course_id: &str) -> rusqlite::Result<CourseProgress> {
+    let (total, not_started, in_progress, completed) = conn.query_row(
+        "SELECT COUNT(cs.id),
+                COALESCE(SUM(CASE WHEN COALESCE(sp.status, 'not_started') = 'not_started' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN sp.status = 'in_progress' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN sp.status = 'completed' THEN 1 ELSE 0 END), 0)
+         FROM course_sections cs
+         LEFT JOIN section_progress sp ON sp.section_id = cs.id
+         WHERE cs.course_id = ?1",
+        params![course_id],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        },
+    )?;
+
+    Ok(course_progress_from_counts(
+        total as usize,
+        not_started as usize,
+        in_progress as usize,
+        completed as usize,
+    ))
+}
+
+fn empty_progress() -> CourseProgress {
+    course_progress_from_counts(0, 0, 0, 0)
+}
+
+fn course_progress_from_counts(
+    total_sections: usize,
+    not_started: usize,
+    in_progress: usize,
+    completed: usize,
+) -> CourseProgress {
+    let percent_complete = if total_sections == 0 {
+        0.0
+    } else {
+        (completed as f64 / total_sections as f64) * 100.0
+    };
+
+    CourseProgress {
+        total_sections,
+        not_started,
+        in_progress,
+        completed,
+        percent_complete,
+    }
+}
+
+fn write_progress_entry(
+    path: &std::path::Path,
+    canonical_path: &str,
+    status: ProgressStatus,
+) -> anyhow::Result<()> {
+    let mut progress: BTreeMap<String, SectionProgressEntry> = if path.is_file() {
+        let contents = std::fs::read_to_string(path)?;
+        serde_yaml::from_str(&contents)?
+    } else {
+        BTreeMap::new()
+    };
+
+    if status == ProgressStatus::NotStarted {
+        progress.remove(canonical_path);
+    } else {
+        let completed_at = (status == ProgressStatus::Completed)
+            .then(|| Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true));
+        progress.insert(
+            canonical_path.to_string(),
+            SectionProgressEntry {
+                status,
+                completed_at,
+            },
+        );
+    }
+
+    let yaml = if progress.is_empty() {
+        "{}\n".to_string()
+    } else {
+        serde_yaml::to_string(&progress)?
+    };
+    std::fs::write(path, yaml)?;
+    Ok(())
+}
+
+fn progress_status_from_str(value: &str) -> ProgressStatus {
+    match value {
+        "completed" => ProgressStatus::Completed,
+        "in_progress" => ProgressStatus::InProgress,
+        _ => ProgressStatus::NotStarted,
+    }
 }
 
 fn markdown_options<'a>() -> Options<'a> {

@@ -35,6 +35,16 @@ export type ReindexSummary = {
   paths: number;
 };
 
+export type ProgressStatus = 'not_started' | 'in_progress' | 'completed';
+
+export type CourseProgress = {
+  total_sections: number;
+  not_started: number;
+  in_progress: number;
+  completed: number;
+  percent_complete: number;
+};
+
 export type CourseListItem = {
   id: string;
   slug: string;
@@ -42,6 +52,7 @@ export type CourseListItem = {
   description: string | null;
   categories: string[];
   section_count: number;
+  progress: CourseProgress;
 };
 
 export type SectionNode = {
@@ -50,6 +61,8 @@ export type SectionNode = {
   title: string;
   heading_level: number;
   order_index: number;
+  status: ProgressStatus;
+  completed_at: string | null;
   children: SectionNode[];
 };
 
@@ -59,6 +72,7 @@ export type CourseDetail = {
   title: string;
   description: string | null;
   categories: string[];
+  progress: CourseProgress;
   sections: SectionNode[];
 };
 
@@ -93,6 +107,14 @@ export function getCourse(courseId: string) {
 
 export function getSection(sectionId: string) {
   return invoke<SectionContent>('get_section', { sectionId });
+}
+
+export function markSectionStatus(sectionId: string, status: ProgressStatus) {
+  return invoke<CourseProgress>('mark_section_status', { sectionId, status });
+}
+
+export function getCourseProgress(courseId: string) {
+  return invoke<CourseProgress>('get_course_progress', { courseId });
 }
 
 export function reindexVault() {
