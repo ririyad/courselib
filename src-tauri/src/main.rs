@@ -4,7 +4,7 @@ mod db;
 
 use std::{path::PathBuf, sync::Mutex};
 
-use crate::core::vault;
+use crate::core::{indexer, vault};
 use tauri::Manager;
 
 pub struct AppState {
@@ -33,6 +33,8 @@ fn main() {
             vault::ensure_vault(&vault_path)?;
             let db_path = db::default_db_path(app.handle())?;
             db::initialize(&db_path)?;
+            let mut conn = db::open(&db_path)?;
+            indexer::reindex_vault(&mut conn, &vault_path)?;
             app.manage(AppState::new(vault_path, db_path));
             Ok(())
         })
@@ -40,6 +42,7 @@ fn main() {
             commands::get_app_status,
             commands::set_vault_path,
             commands::import_course,
+            commands::delete_course,
             commands::list_courses,
             commands::get_course,
             commands::get_section,

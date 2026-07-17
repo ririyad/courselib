@@ -146,6 +146,10 @@ export function importCourse(source: ImportCourseSource) {
   return invoke<WrittenCourse>('import_course', { source });
 }
 
+export function deleteCourse(courseId: string) {
+  return invoke<void>('delete_course', { courseId });
+}
+
 export function listCourses(filter?: { category?: string; include_archived?: boolean }) {
   return invoke<CourseListItem[]>('list_courses', { filter });
 }

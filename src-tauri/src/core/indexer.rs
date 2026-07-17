@@ -636,6 +636,64 @@ mod tests {
         fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
     }
 
+    #[test]
+    fn empty_vault_reindex_clears_courses() {
+        let vault_path = test_vault_path();
+        let db_path = vault_path.join("index.sqlite");
+        vault::write_fetched_course(
+            &vault_path,
+            fetched_from_paste("# Temporary\n".to_string(), None),
+        )
+        .expect("course should be written");
+
+        let mut conn = open_test_db(&db_path);
+        reindex_vault(&mut conn, &vault_path).expect("initial reindex");
+        assert_eq!(count(&conn, "courses"), 1);
+
+        fs::remove_dir_all(vault_path.join("courses/temporary")).expect("course folder removed");
+        let summary = reindex_vault(&mut conn, &vault_path).expect("empty reindex");
+
+        assert_eq!(summary.courses, 0);
+        assert_eq!(count(&conn, "courses"), 0);
+        assert_eq!(count(&conn, "course_sections"), 0);
+
+        fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
+    }
+
+    #[test]
+    fn delete_course_then_reindex_clears_index_and_path_items() {
+        let vault_path = test_vault_path();
+        let db_path = vault_path.join("index.sqlite");
+        let written = vault::write_fetched_course(
+            &vault_path,
+            fetched_from_paste("# Keep Path Clean\n".to_string(), None),
+        )
+        .expect("course should be written");
+        fs::write(
+            vault_path.join("paths/track.yaml"),
+            format!(
+                "title: Track\nslug: track\ndescription: null\ncourses:\n  - slug: {}\n    optional: false\n",
+                written.slug
+            ),
+        )
+        .expect("path should be written");
+
+        let mut conn = open_test_db(&db_path);
+        reindex_vault(&mut conn, &vault_path).expect("initial reindex");
+        assert_eq!(count(&conn, "courses"), 1);
+        assert_eq!(count(&conn, "course_path_items"), 1);
+
+        vault::delete_course(&vault_path, &written.slug).expect("course deleted");
+        let summary = reindex_vault(&mut conn, &vault_path).expect("reindex after delete");
+
+        assert_eq!(summary.courses, 0);
+        assert_eq!(count(&conn, "courses"), 0);
+        assert_eq!(count(&conn, "course_path_items"), 0);
+        assert_eq!(count(&conn, "course_paths"), 1);
+
+        fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
+    }
+
     fn open_test_db(db_path: &Path) -> Connection {
         let conn = db::open(db_path).expect("db should open");
         db::apply_schema(&conn).expect("schema should apply");

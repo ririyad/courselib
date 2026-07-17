@@ -115,6 +115,9 @@ pub fn set_vault_path(
         .lock()
         .map_err(|_| "vault state lock poisoned".to_string())? = vault_path.clone();
 
+    let mut conn = open_index(&state)?;
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+
     Ok(vault::status(&vault_path))
 }
 
@@ -153,6 +156,28 @@ pub async fn import_course(
         .map_err(|err| err.to_string())?;
 
     Ok(written)
+}
+
+#[tauri::command]
+pub fn delete_course(state: State<'_, AppState>, course_id: String) -> Result<(), String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+
+    let mut conn = open_index(&state)?;
+    let source = load_course_source_identity(&conn, &course_id)?;
+
+    let _ = git_vault::commit_all(
+        &vault_path,
+        &format!("Snapshot before deleting {}", source.slug),
+    )
+    .map_err(|err| err.to_string())?;
+
+    vault::delete_course(&vault_path, &source.slug).map_err(|err| err.to_string())?;
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

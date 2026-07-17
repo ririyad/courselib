@@ -15,6 +15,7 @@ use crate::core::{
     parser::{parse_markdown_course, ParsedSection},
     source_fetch::FetchedMarkdown,
 };
+use serde::{Deserialize, Serialize};
 
 pub fn load_or_default_vault_path(app: &AppHandle) -> Result<PathBuf> {
     let settings_path = settings_path(app)?;
@@ -116,6 +117,73 @@ pub fn write_fetched_course(vault_path: &Path, fetched: FetchedMarkdown) -> Resu
         vault_path: course_path.to_string_lossy().into_owned(),
         sections,
     })
+}
+
+pub fn delete_course(vault_path: &Path, course_slug: &str) -> Result<()> {
+    ensure_vault(vault_path)?;
+
+    let course_path = vault_path.join("courses").join(course_slug);
+    if !course_path.is_dir() {
+        anyhow::bail!("course `{course_slug}` not found in vault");
+    }
+
+    fs::remove_dir_all(&course_path).with_context(|| {
+        format!(
+            "failed to delete course folder {}",
+            course_path.display()
+        )
+    })?;
+
+    remove_course_from_paths(vault_path, course_slug)?;
+    Ok(())
+}
+
+fn remove_course_from_paths(vault_path: &Path, course_slug: &str) -> Result<()> {
+    let paths_dir = vault_path.join("paths");
+    if !paths_dir.is_dir() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(&paths_dir)
+        .with_context(|| format!("failed to read {}", paths_dir.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("failed to read entry in {}", paths_dir.display()))?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("yaml") {
+            continue;
+        }
+
+        let contents = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let mut manifest: PathManifest = serde_yaml::from_str(&contents)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        let before = manifest.courses.len();
+        manifest.courses.retain(|course| course.slug != course_slug);
+        if manifest.courses.len() == before {
+            continue;
+        }
+
+        let yaml = serde_yaml::to_string(&manifest)
+            .with_context(|| format!("failed to serialize {}", path.display()))?;
+        fs::write(&path, yaml).with_context(|| format!("failed to write {}", path.display()))?;
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PathManifest {
+    title: String,
+    slug: String,
+    description: Option<String>,
+    courses: Vec<PathCourseManifest>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PathCourseManifest {
+    slug: String,
+    optional: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -467,6 +535,40 @@ mod tests {
         assert_eq!(second_written.slug, "same-2");
         assert!(vault_path.join("courses/same").is_dir());
         assert!(vault_path.join("courses/same-2").is_dir());
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn delete_course_removes_folder_and_path_membership() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+
+        let written = write_fetched_course(
+            &vault_path,
+            fetched_from_paste("# Delete Me\n\n## One\n".to_string(), None),
+        )
+        .expect("course should be written");
+
+        let path_yaml = vault_path.join("paths/learning.yaml");
+        fs::write(
+            &path_yaml,
+            format!(
+                "title: Learning\nslug: learning\ndescription: null\ncourses:\n  - slug: {}\n    optional: false\n  - slug: other\n    optional: true\n",
+                written.slug
+            ),
+        )
+        .expect("path should be written");
+
+        delete_course(&vault_path, &written.slug).expect("course should be deleted");
+
+        assert!(!vault_path.join("courses").join(&written.slug).exists());
+        let path_contents = fs::read_to_string(&path_yaml).expect("path should remain");
+        assert!(!path_contents.contains(&written.slug));
+        assert!(path_contents.contains("other"));
+
+        let missing = delete_course(&vault_path, &written.slug).expect_err("missing course");
+        assert!(missing.to_string().contains("not found"));
 
         fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
     }
