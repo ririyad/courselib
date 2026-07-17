@@ -22,12 +22,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Apple Silicon runners — build arm64 natively.
+          # Both jobs use macos-14 (Apple Silicon). arm64 builds natively;
+          # x64 cross-compiles. Avoid macos-14-arm64 (scarce/queues) and
+          # macos-13 (deprecated Intel pool that can wait forever).
           - name: macOS arm64
-            platform: macos-14-arm64
+            platform: macos-14
             rust_target: aarch64-apple-darwin
             args: '--target aarch64-apple-darwin'
-          # Intel runners — macos-13 is deprecated/low-availability and can queue forever.
           - name: macOS x64
             platform: macos-14
             rust_target: x86_64-apple-darwin
