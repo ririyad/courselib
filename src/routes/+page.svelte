@@ -8,11 +8,13 @@
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { showToast } from '$lib/stores/toasts.svelte';
   import {
+    deleteCategory,
     deleteCourse,
     getAppStatus,
     listCategories,
     listCourses,
     reindexVault,
+    renameCategory,
     setVaultPath,
     type AppStatus,
     type Category,
@@ -22,6 +24,7 @@
 
   let status = $state<AppStatus | null>(null);
   let courses = $state<CourseListItem[]>([]);
+  let allCourses = $state<CourseListItem[]>([]);
   let categories = $state<Category[]>([]);
   let selectedCategory = $state<string | null>(null);
   let reindexSummary = $state<ReindexSummary | null>(null);
@@ -33,10 +36,19 @@
   let loadingCourses = $state(true);
   let coursePendingDelete = $state<CourseListItem | null>(null);
   let deleting = $state(false);
+  let editingCategorySlug = $state<string | null>(null);
+  let categoryNameDraft = $state('');
+  let renamingCategory = $state(false);
+  let categoryPendingDelete = $state<Category | null>(null);
+  let deletingCategory = $state(false);
   let courseView = $state<CourseView>('tile');
 
   let categoryNames = $derived(
     Object.fromEntries(categories.map((c) => [c.slug, c.name])) as Record<string, string>
+  );
+
+  let selectedCategoryDetails = $derived(
+    selectedCategory ? categories.find((category) => category.slug === selectedCategory) : null
   );
 
   onMount(async () => {
@@ -74,7 +86,9 @@
   async function refreshCourses() {
     loadingCourses = true;
     try {
-      courses = await listCourses(selectedCategory ? { category: selectedCategory } : undefined);
+      const filter = selectedCategory ? { category: selectedCategory } : undefined;
+      courses = await listCourses(filter);
+      allCourses = filter ? await listCourses() : courses;
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -137,6 +151,89 @@
   function cancelDelete() {
     if (deleting) return;
     coursePendingDelete = null;
+  }
+
+  function categoryCourseCount(slug: string) {
+    return allCourses.filter((course) => course.categories.includes(slug)).length;
+  }
+
+  function startCategoryRename(category: Category) {
+    if (renamingCategory || deletingCategory) return;
+    editingCategorySlug = category.slug;
+    categoryNameDraft = category.name;
+  }
+
+  function cancelCategoryRename() {
+    if (renamingCategory) return;
+    editingCategorySlug = null;
+    categoryNameDraft = '';
+  }
+
+  async function submitCategoryRename() {
+    if (!editingCategorySlug || renamingCategory) return;
+
+    const name = categoryNameDraft.trim();
+    if (!name) {
+      error = 'Category name cannot be empty.';
+      return;
+    }
+
+    const previousSlug = editingCategorySlug;
+    renamingCategory = true;
+    try {
+      const category = await renameCategory(previousSlug, name);
+      if (selectedCategory === previousSlug) {
+        selectedCategory = category.slug;
+      }
+      editingCategorySlug = null;
+      categoryNameDraft = '';
+      await refreshCategories();
+      await refreshCourses();
+      error = null;
+      showToast(`Renamed category to “${category.name}”`, 'success');
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      renamingCategory = false;
+    }
+  }
+
+  function requestCategoryDelete(category: Category) {
+    if (renamingCategory || deletingCategory) return;
+    categoryPendingDelete = category;
+  }
+
+  function cancelCategoryDelete() {
+    if (deletingCategory) return;
+    categoryPendingDelete = null;
+  }
+
+  async function performCategoryDelete() {
+    if (!categoryPendingDelete || deletingCategory) return;
+
+    deletingCategory = true;
+    const pending = categoryPendingDelete;
+    try {
+      const removedFromCourses = await deleteCategory(pending.slug);
+      if (selectedCategory === pending.slug) {
+        selectedCategory = null;
+      }
+      categoryPendingDelete = null;
+      await refreshCategories();
+      await refreshCourses();
+      error = null;
+      showToast(
+        removedFromCourses
+          ? `Deleted “${pending.name}” and removed it from ${removedFromCourses} course${removedFromCourses === 1 ? '' : 's'}`
+          : `Deleted “${pending.name}”`,
+        'success'
+      );
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      categoryPendingDelete = null;
+    } finally {
+      deletingCategory = false;
+    }
   }
 
   async function performDelete() {
@@ -249,7 +346,23 @@
           : 'Import pasted markdown or a supported GitHub, GitLab, or Codeberg link to create your first course.'}
       </p>
       {#if selectedCategory}
-        <button type="button" class="secondary" onclick={() => selectCategory(null)}>Clear filter</button>
+        <div class="actions">
+          <button type="button" class="secondary" onclick={() => selectCategory(null)}>Clear filter</button>
+          {#if selectedCategoryDetails}
+            <button
+              type="button"
+              class="ghost"
+              onclick={() => startCategoryRename(selectedCategoryDetails)}
+              disabled={renamingCategory || deletingCategory}
+            >Rename category</button>
+            <button
+              type="button"
+              class="danger"
+              onclick={() => requestCategoryDelete(selectedCategoryDetails)}
+              disabled={renamingCategory || deletingCategory}
+            >Delete category</button>
+          {/if}
+        </div>
       {:else}
         <a class="button" href="/import">Import your first course</a>
       {/if}
@@ -297,6 +410,74 @@
           {choosing ? 'Choosing…' : 'Choose vault folder'}
         </button>
       </div>
+
+      <section class="category-manager" aria-labelledby="category-manager-heading">
+        <div class="section-header compact">
+          <div>
+            <p class="eyebrow">Categories</p>
+            <h2 id="category-manager-heading">Manage tags</h2>
+          </div>
+        </div>
+
+        {#if categories.length}
+          <div class="category-manager-list">
+            {#each categories as category}
+              <div class="category-manager-row">
+                {#if editingCategorySlug === category.slug}
+                  <div class="category-edit-form">
+                    <label>
+                      New category name
+                      <input
+                        bind:value={categoryNameDraft}
+                        disabled={renamingCategory}
+                        onkeydown={(event) => {
+                          if (event.key === 'Enter') submitCategoryRename();
+                          if (event.key === 'Escape') cancelCategoryRename();
+                        }}
+                      />
+                    </label>
+                    <div class="actions">
+                      <button
+                        type="button"
+                        class:busy={renamingCategory}
+                        onclick={submitCategoryRename}
+                        disabled={renamingCategory || !categoryNameDraft.trim()}
+                      >{renamingCategory ? 'Saving…' : 'Save'}</button>
+                      <button
+                        type="button"
+                        class="ghost"
+                        onclick={cancelCategoryRename}
+                        disabled={renamingCategory}
+                      >Cancel</button>
+                    </div>
+                  </div>
+                {:else}
+                  <div class="category-manager-main">
+                    <strong>{category.name}</strong>
+                    <span>{category.slug} · {categoryCourseCount(category.slug)} course{categoryCourseCount(category.slug) === 1 ? '' : 's'}</span>
+                  </div>
+                  <div class="category-manager-actions">
+                    <button
+                      type="button"
+                      class="ghost"
+                      onclick={() => startCategoryRename(category)}
+                      disabled={renamingCategory || deletingCategory}
+                    >Rename</button>
+                    <button
+                      type="button"
+                      class="danger"
+                      onclick={() => requestCategoryDelete(category)}
+                      disabled={renamingCategory || deletingCategory}
+                    >Delete</button>
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="muted">No categories yet. Create categories from a course reader.</p>
+        {/if}
+      </section>
     </div>
   </details>
 </main>
@@ -313,4 +494,20 @@
   busy={deleting}
   onConfirm={performDelete}
   onCancel={cancelDelete}
+/>
+
+<ConfirmDialog
+  open={categoryPendingDelete !== null}
+  title="Delete category"
+  message={categoryPendingDelete
+    ? categoryCourseCount(categoryPendingDelete.slug)
+      ? `Delete “${categoryPendingDelete.name}” and remove it from ${categoryCourseCount(categoryPendingDelete.slug)} course${categoryCourseCount(categoryPendingDelete.slug) === 1 ? '' : 's'}? Course content and progress will not be deleted.`
+      : `Delete “${categoryPendingDelete.name}”? No courses use this category.`
+    : 'Delete this category?'}
+  confirmLabel={deletingCategory ? 'Deleting…' : 'Delete'}
+  cancelLabel="Cancel"
+  tone="danger"
+  busy={deletingCategory}
+  onConfirm={performCategoryDelete}
+  onCancel={cancelCategoryDelete}
 />

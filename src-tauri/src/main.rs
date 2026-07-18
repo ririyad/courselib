@@ -49,6 +49,8 @@ fn main() {
             commands::update_course_meta,
             commands::list_categories,
             commands::create_category,
+            commands::rename_category,
+            commands::delete_category,
             commands::list_paths,
             commands::create_path,
             commands::get_path,

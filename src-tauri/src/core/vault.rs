@@ -10,7 +10,8 @@ use tauri::{AppHandle, Manager};
 use crate::core::{
     git_vault,
     models::{
-        AppSettings, AppStatus, CourseManifest, SectionProgressEntry, WrittenCourse, WrittenSection,
+        AppSettings, AppStatus, Category, CourseManifest, SectionProgressEntry, WrittenCourse,
+        WrittenSection,
     },
     parser::{parse_markdown_course, ParsedSection},
     source_fetch::FetchedMarkdown,
@@ -127,15 +128,60 @@ pub fn delete_course(vault_path: &Path, course_slug: &str) -> Result<()> {
         anyhow::bail!("course `{course_slug}` not found in vault");
     }
 
-    fs::remove_dir_all(&course_path).with_context(|| {
-        format!(
-            "failed to delete course folder {}",
-            course_path.display()
-        )
-    })?;
+    fs::remove_dir_all(&course_path)
+        .with_context(|| format!("failed to delete course folder {}", course_path.display()))?;
 
     remove_course_from_paths(vault_path, course_slug)?;
     Ok(())
+}
+
+pub fn rename_category(vault_path: &Path, category_slug: &str, name: &str) -> Result<Category> {
+    ensure_vault(vault_path)?;
+
+    let name = name.trim();
+    if name.is_empty() {
+        anyhow::bail!("category name cannot be empty");
+    }
+
+    let categories_path = vault_path.join("categories.yaml");
+    let mut categories = read_categories_file(&categories_path)?;
+    let category_index = categories
+        .iter()
+        .position(|category| category.slug == category_slug)
+        .ok_or_else(|| anyhow::anyhow!("category `{category_slug}` not found"))?;
+    let new_slug = base_slug(name, "category");
+
+    if new_slug != category_slug && categories.iter().any(|category| category.slug == new_slug) {
+        anyhow::bail!("category `{new_slug}` already exists");
+    }
+
+    let renamed = Category {
+        slug: new_slug.clone(),
+        name: name.to_string(),
+    };
+    categories[category_index] = renamed.clone();
+    write_categories_file(&categories_path, &categories)?;
+
+    if new_slug != category_slug {
+        update_course_category_references(vault_path, category_slug, Some(&new_slug))?;
+    }
+
+    Ok(renamed)
+}
+
+pub fn delete_category(vault_path: &Path, category_slug: &str) -> Result<usize> {
+    ensure_vault(vault_path)?;
+
+    let categories_path = vault_path.join("categories.yaml");
+    let mut categories = read_categories_file(&categories_path)?;
+    let before = categories.len();
+    categories.retain(|category| category.slug != category_slug);
+    if categories.len() == before {
+        anyhow::bail!("category `{category_slug}` not found");
+    }
+
+    write_categories_file(&categories_path, &categories)?;
+    update_course_category_references(vault_path, category_slug, None)
 }
 
 fn remove_course_from_paths(vault_path: &Path, course_slug: &str) -> Result<()> {
@@ -368,6 +414,77 @@ fn read_progress_file(
     serde_yaml::from_str(&contents).with_context(|| format!("failed to parse {}", path.display()))
 }
 
+fn read_categories_file(path: &Path) -> Result<Vec<Category>> {
+    if !path.is_file() {
+        return Ok(Vec::new());
+    }
+    read_yaml_file(path)
+}
+
+fn write_categories_file(path: &Path, categories: &[Category]) -> Result<()> {
+    let mut categories = categories.to_vec();
+    categories.sort_by_key(|category| category.name.to_lowercase());
+    write_yaml_file(path, &categories)
+}
+
+fn update_course_category_references(
+    vault_path: &Path,
+    old_slug: &str,
+    replacement_slug: Option<&str>,
+) -> Result<usize> {
+    let courses_dir = vault_path.join("courses");
+    if !courses_dir.is_dir() {
+        return Ok(0);
+    }
+
+    let mut changed_courses = 0;
+    for entry in fs::read_dir(&courses_dir)
+        .with_context(|| format!("failed to read {}", courses_dir.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("failed to read entry in {}", courses_dir.display()))?;
+        let course_path = entry.path();
+        if !course_path.is_dir() {
+            continue;
+        }
+
+        let manifest_path = course_path.join("_course.yaml");
+        if !manifest_path.is_file() {
+            continue;
+        }
+
+        let mut manifest: CourseManifest = read_yaml_file(&manifest_path)?;
+        let mut changed = false;
+        let mut seen = HashSet::new();
+        let mut next_categories = Vec::new();
+
+        for category in &manifest.categories {
+            let next = if category == old_slug {
+                changed = true;
+                replacement_slug
+            } else {
+                Some(category.as_str())
+            };
+
+            if let Some(next) = next {
+                if seen.insert(next.to_string()) {
+                    next_categories.push(next.to_string());
+                } else {
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            manifest.categories = next_categories;
+            write_yaml_file(&manifest_path, &manifest)?;
+            changed_courses += 1;
+        }
+    }
+
+    Ok(changed_courses)
+}
+
 fn prune_progress_file(path: &Path, canonical_paths: &HashSet<String>) -> Result<Vec<String>> {
     let mut progress = read_progress_file(path)?;
     let mut orphaned = progress
@@ -394,6 +511,13 @@ fn read_yaml_file<T: for<'de> serde::Deserialize<'de>>(path: &Path) -> Result<T>
     let contents =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     serde_yaml::from_str(&contents).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+fn write_yaml_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
+    let yaml = serde_yaml::to_string(value)
+        .with_context(|| format!("failed to serialize {}", path.display()))?;
+    fs::write(path, yaml).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
 }
 
 fn unique_course_slug(vault_path: &Path, title: &str) -> String {
@@ -568,6 +692,101 @@ mod tests {
         assert!(path_contents.contains("other"));
 
         let missing = delete_course(&vault_path, &written.slug).expect_err("missing course");
+        assert!(missing.to_string().contains("not found"));
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn rename_category_updates_catalog_and_course_manifests() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+
+        let written = write_fetched_course(
+            &vault_path,
+            fetched_from_paste("# Systems\n\n## One\n".to_string(), None),
+        )
+        .expect("course should be written");
+        fs::write(
+            vault_path.join("categories.yaml"),
+            "- slug: distributed-sytems\n  name: Distributed Sytems\n- slug: python\n  name: Python\n",
+        )
+        .expect("categories should be written");
+
+        let manifest_path = vault_path
+            .join("courses")
+            .join(&written.slug)
+            .join("_course.yaml");
+        let mut manifest: CourseManifest = read_yaml_file(&manifest_path).expect("manifest");
+        manifest.categories = vec!["distributed-sytems".to_string(), "python".to_string()];
+        write_yaml_file(&manifest_path, &manifest).expect("manifest should be updated");
+
+        let renamed = rename_category(&vault_path, "distributed-sytems", "Distributed Systems")
+            .expect("category should be renamed");
+
+        assert_eq!(renamed.slug, "distributed-systems");
+        assert_eq!(renamed.name, "Distributed Systems");
+        let categories =
+            read_categories_file(&vault_path.join("categories.yaml")).expect("categories");
+        assert!(categories
+            .iter()
+            .any(|category| category.slug == "distributed-systems"));
+        assert!(!categories
+            .iter()
+            .any(|category| category.slug == "distributed-sytems"));
+
+        let manifest: CourseManifest = read_yaml_file(&manifest_path).expect("manifest");
+        assert_eq!(
+            manifest.categories,
+            vec!["distributed-systems".to_string(), "python".to_string()]
+        );
+
+        let collision = rename_category(&vault_path, "distributed-systems", "Python")
+            .expect_err("duplicate slug should be rejected");
+        assert!(collision.to_string().contains("already exists"));
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn delete_category_removes_catalog_entry_and_course_references() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+
+        let written = write_fetched_course(
+            &vault_path,
+            fetched_from_paste("# Math\n\n## One\n".to_string(), None),
+        )
+        .expect("course should be written");
+        fs::write(
+            vault_path.join("categories.yaml"),
+            "- slug: discrete-math\n  name: Discrete Math\n- slug: python\n  name: Python\n",
+        )
+        .expect("categories should be written");
+
+        let manifest_path = vault_path
+            .join("courses")
+            .join(&written.slug)
+            .join("_course.yaml");
+        let mut manifest: CourseManifest = read_yaml_file(&manifest_path).expect("manifest");
+        manifest.categories = vec!["discrete-math".to_string(), "python".to_string()];
+        write_yaml_file(&manifest_path, &manifest).expect("manifest should be updated");
+
+        let removed_from_courses =
+            delete_category(&vault_path, "discrete-math").expect("category should be deleted");
+
+        assert_eq!(removed_from_courses, 1);
+        let categories =
+            read_categories_file(&vault_path.join("categories.yaml")).expect("categories");
+        assert!(!categories
+            .iter()
+            .any(|category| category.slug == "discrete-math"));
+        assert!(categories.iter().any(|category| category.slug == "python"));
+
+        let manifest: CourseManifest = read_yaml_file(&manifest_path).expect("manifest");
+        assert_eq!(manifest.categories, vec!["python".to_string()]);
+
+        let missing = delete_category(&vault_path, "discrete-math").expect_err("missing category");
         assert!(missing.to_string().contains("not found"));
 
         fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");

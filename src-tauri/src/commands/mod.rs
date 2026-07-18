@@ -325,6 +325,42 @@ pub fn create_category(state: State<'_, AppState>, name: String) -> Result<Categ
 }
 
 #[tauri::command]
+pub fn rename_category(
+    state: State<'_, AppState>,
+    category_slug: String,
+    name: String,
+) -> Result<Category, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+
+    let category = vault::rename_category(&vault_path, &category_slug, &name)
+        .map_err(|err| err.to_string())?;
+
+    let mut conn = open_index(&state)?;
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+    Ok(category)
+}
+
+#[tauri::command]
+pub fn delete_category(state: State<'_, AppState>, category_slug: String) -> Result<usize, String> {
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+
+    let removed_from_courses =
+        vault::delete_category(&vault_path, &category_slug).map_err(|err| err.to_string())?;
+
+    let mut conn = open_index(&state)?;
+    indexer::reindex_vault(&mut conn, &vault_path).map_err(|err| err.to_string())?;
+    Ok(removed_from_courses)
+}
+
+#[tauri::command]
 pub fn update_course_meta(
     state: State<'_, AppState>,
     course_id: String,

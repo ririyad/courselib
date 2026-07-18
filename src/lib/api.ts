@@ -177,6 +177,14 @@ export function createCategory(name: string) {
   return invoke<Category>('create_category', { name });
 }
 
+export function renameCategory(categorySlug: string, name: string) {
+  return invoke<Category>('rename_category', { categorySlug, name });
+}
+
+export function deleteCategory(categorySlug: string) {
+  return invoke<number>('delete_category', { categorySlug });
+}
+
 export function listPaths() {
   return invoke<CoursePathSummary[]>('list_paths');
 }
