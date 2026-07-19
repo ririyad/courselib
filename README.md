@@ -12,7 +12,7 @@ Built with **Tauri 2** (Rust) + **SvelteKit**.
 
 - **Import courses** from pasted markdown or a supported remote markdown URL
 - **Offline images** — repository images are cached in the vault; pasted courses can include local attachments
-- **Library view** with progress bars and category filters
+- **Library view** with progress bars, tile/list layouts, category filters, and instant metadata search
 - **Reader** with a section tree, rendered HTML, and per-section status (not started / in progress / completed)
 - **Editable course titles** and category tagging
 - **Course deletion** with path cleanup and a vault snapshot before removal
@@ -164,6 +164,7 @@ Section order uses numeric prefixes; progress keys use **canonical paths** (pref
 | Import (paste + URL) | Available |
 | Library + category filters | Available |
 | Tile / list library views | Available |
+| Course metadata search | Available — title, description, and category names |
 | Course reader + progress | Available |
 | Categories create / assign | Available |
 | Rename course title | Available |
@@ -171,8 +172,8 @@ Section order uses numeric prefixes; progress keys use **canonical paths** (pref
 | Paths / curricula UI | Available |
 | Source drift check | Available |
 | Manual source re-import | Available |
-| Search index | Available in SQLite |
-| Search UI | Planned |
+| Section-content search index | Available in SQLite |
+| Section-content search UI | Planned |
 
 Contributor notes and architecture details live in this README and the Rust/Svelte source under `src-tauri/` and `src/`.
 
