@@ -206,7 +206,9 @@
           </ul>
         </div>
       {/if}
-      <a class="button" href={`/courses/${imported.slug}`}>Open course</a>
+      <div class="actions">
+        <a class="button" href={`/courses/${imported.slug}`}>Open course</a>
+      </div>
     </section>
   {/if}
 </main>
@@ -223,6 +225,12 @@
   .asset-warnings ul {
     margin: 0;
     padding-left: 1.25rem;
+  }
+
+  .asset-warnings,
+  .asset-warnings li {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .attachment-list {
