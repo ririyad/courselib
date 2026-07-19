@@ -182,7 +182,14 @@
       }
       error = null;
       confirmReimportOpen = false;
-      showToast('Course re-imported from source', 'success');
+      if (result.asset_warnings.length) {
+        showToast(
+          `Course re-imported with ${result.asset_warnings.length} image warning${result.asset_warnings.length === 1 ? '' : 's'}`,
+          'info'
+        );
+      } else {
+        showToast('Course re-imported from source', 'success');
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       confirmReimportOpen = false;

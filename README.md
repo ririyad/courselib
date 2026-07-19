@@ -11,6 +11,7 @@ Built with **Tauri 2** (Rust) + **SvelteKit**.
 ## Features
 
 - **Import courses** from pasted markdown or a supported remote markdown URL
+- **Offline images** — repository images are cached in the vault; pasted courses can include local attachments
 - **Library view** with progress bars and category filters
 - **Reader** with a section tree, rendered HTML, and per-section status (not started / in progress / completed)
 - **Editable course titles** and category tagging
@@ -142,6 +143,10 @@ vault/
       _source.md          # snapshot of the import
       _course.yaml        # title, categories, source metadata
       _progress.yaml      # section completion by canonical path
+      _assets.yaml        # image source, hash, type, and ownership metadata
+      assets/
+        remote/           # downloaded repository images, refreshed on re-import
+        local/            # user-selected attachments, preserved on re-import
       sections/           # heading tree as folders + markdown files
   paths/                  # curricula / learning paths
   categories.yaml
@@ -197,6 +202,8 @@ courselib/
 - Frontend is a static SPA (`ssr = false`) for Tauri’s webview.
 - Markdown is parsed and rendered on the **Rust** side (`comrak`) so structure and HTML stay aligned.
 - Default vault path comes from the OS user dirs crate; choose another folder anytime in the UI.
+- Image imports accept PNG, JPEG, GIF, and WebP (up to 10 MiB each). SVG is intentionally rejected.
+- Remote course images are downloaded from supported repository/raw hosts so reading remains offline-capable.
 - Prefer small, focused changes. Keep vault writes ahead of index updates.
 
 ---
