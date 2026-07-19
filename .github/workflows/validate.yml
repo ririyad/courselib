@@ -15,6 +15,9 @@ permissions:
 jobs:
   validate:
     name: Validate ${{ matrix.name }}
+    # Skip redundant runs on release version-bump commits; the Release
+    # workflow (triggered by the tag) already builds and tests those.
+    if: ${{ github.event_name == 'pull_request' || !startsWith(github.event.head_commit.message, 'Bump version') }}
     strategy:
       fail-fast: false
       matrix:
@@ -30,12 +33,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: 24
           cache: npm
 
       - name: Install Rust stable
