@@ -53,6 +53,7 @@ pub struct WrittenCourse {
     pub slug: String,
     pub vault_path: String,
     pub sections: Vec<WrittenSection>,
+    pub asset_warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -127,6 +128,7 @@ pub struct SourceDriftStatus {
 pub struct ReimportCourseResult {
     pub course: CourseDetail,
     pub orphaned_progress_paths: Vec<String>,
+    pub asset_warnings: Vec<String>,
     pub git_commit: Option<String>,
 }
 

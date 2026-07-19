@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod fs_util;
 pub mod git_vault;
 pub mod indexer;

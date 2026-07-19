@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
 use crate::core::{
+    assets::{self, LocalAttachment},
     fs_util, git_vault,
     models::{
         AppSettings, AppStatus, Category, CourseManifest, SectionProgressEntry, WrittenCourse,
@@ -82,23 +83,86 @@ pub fn status(vault_path: &Path) -> AppStatus {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn write_fetched_course(vault_path: &Path, fetched: FetchedMarkdown) -> Result<WrittenCourse> {
     ensure_vault(vault_path)?;
 
     let parsed = parse_markdown_course(&fetched.content, fetched.title_hint.as_deref());
     let course_slug = unique_course_slug(vault_path, &parsed.title);
+    let source_markdown = fetched.content.clone();
+    write_fetched_course_at(
+        vault_path,
+        fetched,
+        &course_slug,
+        &source_markdown,
+        Vec::new(),
+    )
+}
+
+pub async fn write_fetched_course_with_assets(
+    vault_path: &Path,
+    fetched: FetchedMarkdown,
+    attachments: &[LocalAttachment],
+) -> Result<WrittenCourse> {
+    ensure_vault(vault_path)?;
+    let parsed = parse_markdown_course(&fetched.content, fetched.title_hint.as_deref());
+    let course_slug = unique_course_slug(vault_path, &parsed.title);
     let course_path = vault_path.join("courses").join(&course_slug);
+    fs::create_dir_all(&course_path)
+        .with_context(|| format!("failed to create {}", course_path.display()))?;
+    let source_markdown = fetched.content.clone();
+    let materialized = match assets::materialize(
+        &course_path,
+        &course_slug,
+        &source_markdown,
+        fetched.raw_url.as_deref(),
+        attachments,
+    )
+    .await
+    {
+        Ok(materialized) => materialized,
+        Err(err) => {
+            let _ = fs_util::remove_dir_all_retry(&course_path);
+            return Err(err);
+        }
+    };
+    let mut generated = fetched;
+    generated.content = materialized.markdown;
+    match write_fetched_course_at(
+        vault_path,
+        generated,
+        &course_slug,
+        &source_markdown,
+        materialized.warnings,
+    ) {
+        Ok(written) => Ok(written),
+        Err(err) => {
+            let _ = fs_util::remove_dir_all_retry(&course_path);
+            Err(err)
+        }
+    }
+}
+
+fn write_fetched_course_at(
+    vault_path: &Path,
+    fetched: FetchedMarkdown,
+    course_slug: &str,
+    source_markdown: &str,
+    asset_warnings: Vec<String>,
+) -> Result<WrittenCourse> {
+    let parsed = parse_markdown_course(&fetched.content, fetched.title_hint.as_deref());
+    let course_path = vault_path.join("courses").join(course_slug);
     let sections_path = course_path.join("sections");
 
     fs::create_dir_all(&sections_path)
         .with_context(|| format!("failed to create {}", sections_path.display()))?;
 
-    fs::write(course_path.join("_source.md"), &fetched.content)
+    fs::write(course_path.join("_source.md"), source_markdown)
         .with_context(|| format!("failed to write source snapshot for {course_slug}"))?;
 
     let manifest = CourseManifest {
         title: parsed.title.clone(),
-        slug: course_slug.clone(),
+        slug: course_slug.to_string(),
         description: None,
         categories: Vec::new(),
         source: fetched.source,
@@ -115,9 +179,10 @@ pub fn write_fetched_course(vault_path: &Path, fetched: FetchedMarkdown) -> Resu
 
     Ok(WrittenCourse {
         title: parsed.title,
-        slug: course_slug,
+        slug: course_slug.to_string(),
         vault_path: course_path.to_string_lossy().into_owned(),
         sections,
+        asset_warnings,
     })
 }
 
@@ -239,10 +304,54 @@ pub struct ReimportedCourse {
     pub orphaned_progress_paths: Vec<String>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn reimport_fetched_course(
     vault_path: &Path,
     course_slug: &str,
     fetched: FetchedMarkdown,
+) -> Result<ReimportedCourse> {
+    let source_markdown = fetched.content.clone();
+    reimport_fetched_course_content(
+        vault_path,
+        course_slug,
+        fetched,
+        &source_markdown,
+        Vec::new(),
+    )
+}
+
+pub async fn reimport_fetched_course_with_assets(
+    vault_path: &Path,
+    course_slug: &str,
+    fetched: FetchedMarkdown,
+) -> Result<ReimportedCourse> {
+    let course_path = vault_path.join("courses").join(course_slug);
+    let source_markdown = fetched.content.clone();
+    let materialized = assets::materialize(
+        &course_path,
+        course_slug,
+        &source_markdown,
+        fetched.raw_url.as_deref(),
+        &[],
+    )
+    .await?;
+    let mut generated = fetched;
+    generated.content = materialized.markdown;
+    reimport_fetched_course_content(
+        vault_path,
+        course_slug,
+        generated,
+        &source_markdown,
+        materialized.warnings,
+    )
+}
+
+fn reimport_fetched_course_content(
+    vault_path: &Path,
+    course_slug: &str,
+    fetched: FetchedMarkdown,
+    source_markdown: &str,
+    asset_warnings: Vec<String>,
 ) -> Result<ReimportedCourse> {
     ensure_vault(vault_path)?;
 
@@ -270,7 +379,7 @@ pub fn reimport_fetched_course(
     let canonical_paths = written_canonical_paths(&sections);
     let orphaned_progress_paths = prune_progress_file(&progress_path, &canonical_paths)?;
 
-    fs::write(course_path.join("_source.md"), &fetched.content)
+    fs::write(course_path.join("_source.md"), source_markdown)
         .with_context(|| format!("failed to write source snapshot for {course_slug}"))?;
 
     manifest.source = fetched.source;
@@ -297,6 +406,7 @@ pub fn reimport_fetched_course(
             slug: manifest.slug,
             vault_path: course_path.to_string_lossy().into_owned(),
             sections,
+            asset_warnings,
         },
         orphaned_progress_paths,
     })
@@ -804,14 +914,44 @@ mod tests {
         let _ = fs::remove_dir_all(&vault_path);
         let long_title = format!("# {}\n", "Long Title Word ".repeat(20));
 
-        let written = write_fetched_course(
-            &vault_path,
-            fetched_from_paste(long_title, None),
-        )
-        .expect("course should be written");
+        let written = write_fetched_course(&vault_path, fetched_from_paste(long_title, None))
+            .expect("course should be written");
 
         assert!(written.slug.len() <= 60);
         assert!(vault_path.join("courses").join(&written.slug).is_dir());
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn write_fetched_course_with_local_image_keeps_source_and_rewrites_sections() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+        fs::create_dir_all(&vault_path).expect("test vault folder should be created");
+        let source_image = vault_path.join("diagram.png");
+        fs::write(&source_image, b"\x89PNG\r\n\x1a\nfake-image-data")
+            .expect("test image should be written");
+        let markdown = "# Image Course\n\n![Diagram](diagram.png)\n";
+
+        let written = tauri::async_runtime::block_on(write_fetched_course_with_assets(
+            &vault_path,
+            fetched_from_paste(markdown.to_string(), Some("Image Course".to_string())),
+            &[LocalAttachment {
+                path: source_image.to_string_lossy().into_owned(),
+                name: Some("diagram.png".to_string()),
+            }],
+        ))
+        .expect("course with image should be written");
+
+        let course_path = vault_path.join("courses").join(&written.slug);
+        assert_eq!(
+            fs::read_to_string(course_path.join("_source.md")).unwrap(),
+            markdown
+        );
+        assert!(course_path.join("_assets.yaml").is_file());
+        let section = fs::read_to_string(course_path.join("sections/01-image-course.md")).unwrap();
+        assert!(section.contains("courselib-asset://localhost/course/image-course/local-"));
+        assert!(written.asset_warnings.is_empty());
 
         fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
     }

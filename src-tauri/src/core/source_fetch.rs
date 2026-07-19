@@ -11,6 +11,7 @@ pub struct FetchedMarkdown {
     pub content: String,
     pub title_hint: Option<String>,
     pub source: CourseSource,
+    pub raw_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +43,7 @@ pub fn fetched_from_paste(content: String, title_hint: Option<String>) -> Fetche
         },
         content,
         title_hint,
+        raw_url: None,
     }
 }
 
@@ -86,6 +88,7 @@ pub async fn fetch_link(url: &str) -> Result<FetchedMarkdown> {
             imported_at: imported_at_now(),
         },
         content,
+        raw_url: Some(raw_url),
     })
 }
 
