@@ -8,12 +8,13 @@ use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
 use crate::core::{
-    git_vault,
+    fs_util, git_vault,
     models::{
         AppSettings, AppStatus, Category, CourseManifest, SectionProgressEntry, WrittenCourse,
         WrittenSection,
     },
     parser::{parse_markdown_course, ParsedSection},
+    slugs,
     source_fetch::FetchedMarkdown,
 };
 use serde::{Deserialize, Serialize};
@@ -128,7 +129,7 @@ pub fn delete_course(vault_path: &Path, course_slug: &str) -> Result<()> {
         anyhow::bail!("course `{course_slug}` not found in vault");
     }
 
-    fs::remove_dir_all(&course_path)
+    fs_util::remove_dir_all_retry(&course_path)
         .with_context(|| format!("failed to delete course folder {}", course_path.display()))?;
 
     remove_course_from_paths(vault_path, course_slug)?;
@@ -149,7 +150,7 @@ pub fn rename_category(vault_path: &Path, category_slug: &str, name: &str) -> Re
         .iter()
         .position(|category| category.slug == category_slug)
         .ok_or_else(|| anyhow::anyhow!("category `{category_slug}` not found"))?;
-    let new_slug = base_slug(name, "category");
+    let new_slug = slugs::base_slug(name, "category");
 
     if new_slug != category_slug && categories.iter().any(|category| category.slug == new_slug) {
         anyhow::bail!("category `{new_slug}` already exists");
@@ -259,7 +260,7 @@ pub fn reimport_fetched_course(
     let parsed = parse_markdown_course(&fetched.content, fetched.title_hint.as_deref());
 
     if temp_sections_path.exists() {
-        fs::remove_dir_all(&temp_sections_path)
+        fs_util::remove_dir_all_retry(&temp_sections_path)
             .with_context(|| format!("failed to remove {}", temp_sections_path.display()))?;
     }
     fs::create_dir_all(&temp_sections_path)
@@ -279,10 +280,10 @@ pub fn reimport_fetched_course(
         .with_context(|| format!("failed to write {}", manifest_path.display()))?;
 
     if sections_path.exists() {
-        fs::remove_dir_all(&sections_path)
+        fs_util::remove_dir_all_retry(&sections_path)
             .with_context(|| format!("failed to remove {}", sections_path.display()))?;
     }
-    fs::rename(&temp_sections_path, &sections_path).with_context(|| {
+    fs_util::rename_retry(&temp_sections_path, &sections_path).with_context(|| {
         format!(
             "failed to replace {} with {}",
             sections_path.display(),
@@ -522,39 +523,15 @@ fn write_yaml_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
 
 fn unique_course_slug(vault_path: &Path, title: &str) -> String {
     let courses_path = vault_path.join("courses");
-    let base = base_slug(title, "course");
-    let mut candidate = base.clone();
-    let mut suffix = 2;
-
-    while courses_path.join(&candidate).exists() {
-        candidate = format!("{base}-{suffix}");
-        suffix += 1;
-    }
-
-    candidate
+    let base = slugs::base_slug(title, "course");
+    slugs::unique_slug(&base, |candidate| courses_path.join(candidate).exists())
 }
 
 fn unique_sibling_slug(title: &str, used: &mut HashSet<String>) -> String {
-    let base = base_slug(title, "section");
-    let mut candidate = base.clone();
-    let mut suffix = 2;
-
-    while used.contains(&candidate) {
-        candidate = format!("{base}-{suffix}");
-        suffix += 1;
-    }
-
+    let base = slugs::base_slug(title, "section");
+    let candidate = slugs::unique_slug(&base, |candidate| used.contains(candidate));
     used.insert(candidate.clone());
     candidate
-}
-
-fn base_slug(title: &str, fallback: &str) -> String {
-    let slug = slug::slugify(title);
-    if slug.is_empty() {
-        fallback.to_string()
-    } else {
-        slug
-    }
 }
 
 fn default_vault_path() -> PathBuf {
@@ -788,6 +765,90 @@ mod tests {
 
         let missing = delete_category(&vault_path, "discrete-math").expect_err("missing category");
         assert!(missing.to_string().contains("not found"));
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn write_fetched_course_rewrites_reserved_windows_slug() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+
+        let written = write_fetched_course(
+            &vault_path,
+            fetched_from_paste("# CON\n\n## AUX\nBody\n".to_string(), None),
+        )
+        .expect("course should be written");
+
+        assert_eq!(written.slug, "con-item");
+        assert!(vault_path.join("courses").join("con-item").is_dir());
+        assert_eq!(written.sections[0].canonical_path, "con-item");
+        assert_eq!(
+            written.sections[0].children[0].canonical_path,
+            "con-item/aux-item"
+        );
+        assert!(vault_path
+            .join("courses")
+            .join("con-item")
+            .join("sections")
+            .join("01-con-item")
+            .join("01-aux-item.md")
+            .is_file());
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn write_fetched_course_truncates_very_long_titles() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+        let long_title = format!("# {}\n", "Long Title Word ".repeat(20));
+
+        let written = write_fetched_course(
+            &vault_path,
+            fetched_from_paste(long_title, None),
+        )
+        .expect("course should be written");
+
+        assert!(written.slug.len() <= 60);
+        assert!(vault_path.join("courses").join(&written.slug).is_dir());
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn reimport_fetched_course_replaces_sections() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+
+        let written = write_fetched_course(
+            &vault_path,
+            fetched_from_paste("# Reimport Me\n\n## Old\nOld body\n".to_string(), None),
+        )
+        .expect("course should be written");
+
+        let reimported = reimport_fetched_course(
+            &vault_path,
+            &written.slug,
+            fetched_from_paste("# Reimport Me\n\n## New\nNew body\n".to_string(), None),
+        )
+        .expect("course should be reimported");
+
+        assert_eq!(
+            reimported.written.sections[0].children[0].canonical_path,
+            "reimport-me/new"
+        );
+        let course_path = vault_path.join("courses").join(&written.slug);
+        assert!(course_path
+            .join("sections")
+            .join("01-reimport-me")
+            .join("01-new.md")
+            .is_file());
+        assert!(!course_path
+            .join("sections")
+            .join("01-reimport-me")
+            .join("01-old.md")
+            .exists());
 
         fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
     }

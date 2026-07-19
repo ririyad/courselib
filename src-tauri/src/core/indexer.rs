@@ -582,6 +582,7 @@ mod tests {
             .expect("status should be indexed");
         assert_eq!(status, "completed");
 
+        drop(conn);
         fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
     }
 
@@ -607,6 +608,7 @@ mod tests {
         assert_eq!(count(&conn, "courses"), 1);
         assert_eq!(count(&conn, "course_sections"), 2);
 
+        drop(conn);
         fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
     }
 
@@ -633,6 +635,7 @@ mod tests {
         assert_eq!(count(&conn, "courses"), 2);
         assert_eq!(count(&conn, "course_sections"), 2);
 
+        drop(conn);
         fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
     }
 
@@ -657,6 +660,7 @@ mod tests {
         assert_eq!(count(&conn, "courses"), 0);
         assert_eq!(count(&conn, "course_sections"), 0);
 
+        drop(conn);
         fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
     }
 
@@ -691,6 +695,7 @@ mod tests {
         assert_eq!(count(&conn, "course_path_items"), 0);
         assert_eq!(count(&conn, "course_paths"), 1);
 
+        drop(conn);
         fs::remove_dir_all(&vault_path).expect("test cleanup should succeed");
     }
 

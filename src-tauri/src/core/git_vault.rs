@@ -3,6 +3,8 @@ use std::{fs, path::Path};
 use anyhow::{bail, Context, Result};
 use git2::{IndexAddOption, Oid, Repository, Signature, StatusOptions};
 
+use crate::core::fs_util;
+
 /// Ensure the vault has Git metadata stored in `vault/.vaultgit`.
 ///
 /// A small `vault/.git` gitdir pointer is written so normal Git tooling and
@@ -27,12 +29,16 @@ pub fn ensure_initialized(vault_path: &Path) -> Result<()> {
         );
     }
 
-    Repository::init(vault_path)
-        .with_context(|| format!("failed to initialize git repo in {}", vault_path.display()))?;
+    {
+        // Drop the Repository before relocating `.git` so Windows releases locks.
+        let _repo = Repository::init(vault_path).with_context(|| {
+            format!("failed to initialize git repo in {}", vault_path.display())
+        })?;
+    }
 
     let default_git_path = vault_path.join(".git");
     if default_git_path.is_dir() {
-        fs::rename(&default_git_path, &vault_git_path).with_context(|| {
+        fs_util::rename_retry(&default_git_path, &vault_git_path).with_context(|| {
             format!(
                 "failed to move {} to {}",
                 default_git_path.display(),
