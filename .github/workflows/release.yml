@@ -1,8 +1,9 @@
-# Build macOS CourseLib bundles and publish a GitHub Release.
+# Build CourseLib desktop bundles and publish a GitHub Release.
 # Deploy log: Actions tab → this workflow run.
 # Trigger: push a version tag (v0.1.0) or run manually via workflow_dispatch.
 #
-# Each arch builds natively (no arm64→x64 cross-compile) to avoid OpenSSL/sysroot issues.
+# macOS: both arch jobs use macos-14 (Apple Silicon). arm64 builds natively;
+# x64 cross-compiles. Windows: native MSVC x64 NSIS installer (unsigned).
 
 name: Release
 
@@ -22,9 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Both jobs use macos-14 (Apple Silicon). arm64 builds natively;
-          # x64 cross-compiles. Avoid macos-14-arm64 (scarce/queues) and
-          # macos-13 (deprecated Intel pool that can wait forever).
           - name: macOS arm64
             platform: macos-14
             rust_target: aarch64-apple-darwin
@@ -33,6 +31,10 @@ jobs:
             platform: macos-14
             rust_target: x86_64-apple-darwin
             args: '--target x86_64-apple-darwin'
+          - name: Windows x64
+            platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            args: '--target x86_64-pc-windows-msvc --bundles nsis'
 
     runs-on: ${{ matrix.platform }}
 
@@ -64,6 +66,7 @@ jobs:
 
       - name: Resolve app version
         id: version
+        shell: bash
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -71,6 +74,7 @@ jobs:
 
       - name: Generate release notes
         id: notes
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -84,7 +88,9 @@ jobs:
               echo "body<<EOF"
               echo "## CourseLib $TAG"
               echo
-              echo "macOS builds are attached below. Open the **Actions → Release** run for this tag for the full deploy log."
+              echo "Desktop builds for macOS (arm64/x64) and Windows (x64 NSIS) are attached below."
+              echo "Windows installers are currently unsigned; SmartScreen may show an Unknown Publisher warning."
+              echo "Open the **Actions → Release** run for this tag for the full deploy log."
               echo
               echo "$BODY"
               echo "EOF"
@@ -94,7 +100,8 @@ jobs:
               echo "body<<EOF"
               echo "## CourseLib $TAG"
               echo
-              echo "macOS builds are attached below."
+              echo "Desktop builds for macOS (arm64/x64) and Windows (x64 NSIS) are attached below."
+              echo "Windows installers are currently unsigned; SmartScreen may show an Unknown Publisher warning."
               echo
               echo "Deploy log: GitHub **Actions** → workflow **Release** for this tag."
               echo "EOF"
