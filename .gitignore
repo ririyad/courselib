@@ -1,6 +1,8 @@
 node_modules/
 .svelte-kit/
 build/
+site/
+.venv-docs/
 src-tauri/target/
 .DS_Store
 *.log

@@ -6,6 +6,8 @@ Turn markdown — pasted in, or pulled from GitHub / GitLab / Codeberg — into 
 
 Built with **Tauri 2** (Rust) + **SvelteKit**.
 
+**Docs:** [ririyad.github.io/courselib](https://ririyad.github.io/courselib/) · **Downloads:** [GitHub Releases](https://github.com/ririyad/courselib/releases/latest)
+
 ---
 
 ## Features
@@ -80,6 +82,7 @@ Published builds ship via **GitHub Releases**. CI builds:
 |---------|---------|
 | [Releases](https://github.com/ririyad/courselib/releases) | Version notes + downloadable desktop assets |
 | [Actions → Release](https://github.com/ririyad/courselib/actions/workflows/release.yml) | Full **deploy/build log** for each publish |
+| [Actions → Docs](https://github.com/ririyad/courselib/actions/workflows/docs.yml) | Build and deploy [docs site](https://ririyad.github.io/courselib/) |
 | [Actions → Validate](https://github.com/ririyad/courselib/actions/workflows/validate.yml) | PR/main Rust tests + frontend build (macOS + Windows) |
 
 ### Download (users)
@@ -192,8 +195,9 @@ courselib/
     src/core/          # vault, parser, indexer, fetch, models
     src/db/            # SQLite schema + open helpers
   static/              # icons and static assets
+  docs/                # MkDocs Material documentation site
   scripts/validate.mjs # full validation pipeline (cross-platform)
-  .github/workflows/   # CI validate + release pipelines
+  .github/workflows/   # CI validate + release + docs pipelines
 ```
 
 ---
