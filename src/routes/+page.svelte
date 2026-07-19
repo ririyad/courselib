@@ -23,10 +23,10 @@
   } from '$lib/api';
 
   let status = $state<AppStatus | null>(null);
-  let courses = $state<CourseListItem[]>([]);
   let allCourses = $state<CourseListItem[]>([]);
   let categories = $state<Category[]>([]);
   let selectedCategory = $state<string | null>(null);
+  let searchQuery = $state('');
   let reindexSummary = $state<ReindexSummary | null>(null);
   let error = $state<string | null>(null);
   let choosing = $state(false);
@@ -50,6 +50,44 @@
   let selectedCategoryDetails = $derived(
     selectedCategory ? categories.find((category) => category.slug === selectedCategory) : null
   );
+
+  let normalizedSearchQuery = $derived(searchQuery.trim().toLocaleLowerCase());
+  let hasSearchQuery = $derived(normalizedSearchQuery.length > 0);
+
+  let courses = $derived(
+    allCourses.filter((course) => {
+      if (selectedCategory && !course.categories.includes(selectedCategory)) {
+        return false;
+      }
+
+      if (!hasSearchQuery) {
+        return true;
+      }
+
+      const haystack = [
+        course.title,
+        course.description ?? '',
+        ...course.categories.map((slug) => categoryNames[slug] ?? slug)
+      ]
+        .join(' ')
+        .toLocaleLowerCase();
+
+      return haystack.includes(normalizedSearchQuery);
+    })
+  );
+
+  let libraryHeading = $derived.by(() => {
+    if (hasSearchQuery && selectedCategory) {
+      return `${courses.length} result${courses.length === 1 ? '' : 's'} in filter`;
+    }
+    if (hasSearchQuery) {
+      return `${courses.length} result${courses.length === 1 ? '' : 's'}`;
+    }
+    if (selectedCategory) {
+      return 'Filtered';
+    }
+    return 'All courses';
+  });
 
   onMount(async () => {
     const savedView = localStorage.getItem('courselib-course-view');
@@ -86,9 +124,7 @@
   async function refreshCourses() {
     loadingCourses = true;
     try {
-      const filter = selectedCategory ? { category: selectedCategory } : undefined;
-      courses = await listCourses(filter);
-      allCourses = filter ? await listCourses() : courses;
+      allCourses = await listCourses();
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -133,9 +169,12 @@
     }
   }
 
-  async function selectCategory(slug: string | null) {
+  function selectCategory(slug: string | null) {
     selectedCategory = slug;
-    await refreshCourses();
+  }
+
+  function clearSearch() {
+    searchQuery = '';
   }
 
   function setCourseView(view: CourseView) {
@@ -275,7 +314,12 @@
 
   <section class="section-header library-section">
     <div>
-      <h2>{selectedCategory ? 'Filtered' : 'All courses'}</h2>
+      <h2>{libraryHeading}</h2>
+      {#if hasSearchQuery}
+        <p class="sr-only" aria-live="polite">
+          {courses.length} result{courses.length === 1 ? '' : 's'}
+        </p>
+      {/if}
     </div>
     <div class="segmented view-toggle" role="group" aria-label="Course view">
       <button
@@ -315,6 +359,49 @@
     </div>
   </section>
 
+  <div class="library-search">
+    <label class="library-search-field">
+      <span class="sr-only">Search courses</span>
+      <svg
+        class="library-search-icon"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        aria-hidden="true"
+      >
+        <circle cx="7" cy="7" r="4.25" stroke="currentColor" stroke-width="1.5" />
+        <path d="M10.25 10.25 13.5 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+      </svg>
+      <input
+        type="search"
+        bind:value={searchQuery}
+        placeholder="Search courses…"
+        aria-label="Search courses"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      {#if hasSearchQuery}
+        <button
+          type="button"
+          class="ghost icon-button library-search-clear"
+          aria-label="Clear search"
+          title="Clear search"
+          onclick={clearSearch}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M4 4l8 8M12 4l-8 8"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      {/if}
+    </label>
+  </div>
+
   <section class="filter-bar" aria-label="Category filters">
     <button
       type="button"
@@ -334,38 +421,53 @@
     <Skeleton variant="cards" count={3} />
   {:else if courses.length}
     <div class={courseView === 'tile' ? 'course-grid' : 'course-list'}>
-      {#each courses as course}
+      {#each courses as course (course.id)}
         <CourseCard {course} {categoryNames} view={courseView} onDelete={requestDelete} />
       {/each}
     </div>
-  {:else}
-    <EmptyState title={selectedCategory ? 'No matches' : 'No courses yet'}>
+  {:else if allCourses.length === 0}
+    <EmptyState title="No courses yet">
       <p>
-        {selectedCategory
-          ? 'No courses match this category yet.'
-          : 'Import pasted markdown or a supported GitHub, GitLab, or Codeberg link to create your first course.'}
+        Import pasted markdown or a supported GitHub, GitLab, or Codeberg link to create your first
+        course.
       </p>
-      {#if selectedCategory}
-        <div class="actions">
-          <button type="button" class="secondary" onclick={() => selectCategory(null)}>Clear filter</button>
-          {#if selectedCategoryDetails}
-            <button
-              type="button"
-              class="ghost"
-              onclick={() => startCategoryRename(selectedCategoryDetails)}
-              disabled={renamingCategory || deletingCategory}
-            >Rename category</button>
-            <button
-              type="button"
-              class="danger"
-              onclick={() => requestCategoryDelete(selectedCategoryDetails)}
-              disabled={renamingCategory || deletingCategory}
-            >Delete category</button>
-          {/if}
-        </div>
-      {:else}
-        <a class="button" href="/import">Import your first course</a>
-      {/if}
+      <a class="button" href="/import">Import your first course</a>
+    </EmptyState>
+  {:else if hasSearchQuery && selectedCategory}
+    <EmptyState title="No courses found">
+      <p>
+        No courses match “{searchQuery.trim()}” in the selected category.
+      </p>
+      <div class="actions">
+        <button type="button" class="secondary" onclick={clearSearch}>Clear search</button>
+        <button type="button" class="ghost" onclick={() => selectCategory(null)}>Clear category</button>
+      </div>
+    </EmptyState>
+  {:else if hasSearchQuery}
+    <EmptyState title="No courses found">
+      <p>No courses match “{searchQuery.trim()}”.</p>
+      <button type="button" class="secondary" onclick={clearSearch}>Clear search</button>
+    </EmptyState>
+  {:else}
+    <EmptyState title="No matches">
+      <p>No courses match this category yet.</p>
+      <div class="actions">
+        <button type="button" class="secondary" onclick={() => selectCategory(null)}>Clear filter</button>
+        {#if selectedCategoryDetails}
+          <button
+            type="button"
+            class="ghost"
+            onclick={() => startCategoryRename(selectedCategoryDetails)}
+            disabled={renamingCategory || deletingCategory}
+          >Rename category</button>
+          <button
+            type="button"
+            class="danger"
+            onclick={() => requestCategoryDelete(selectedCategoryDetails)}
+            disabled={renamingCategory || deletingCategory}
+          >Delete category</button>
+        {/if}
+      </div>
     </EmptyState>
   {/if}
 

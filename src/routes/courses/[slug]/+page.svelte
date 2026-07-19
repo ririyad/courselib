@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import CategoryPicker from '$lib/components/CategoryPicker.svelte';
   import ErrorBanner from '$lib/components/ErrorBanner.svelte';
@@ -13,7 +12,6 @@
   import {
     checkSourceDrift,
     createCategory,
-    deleteCourse,
     getCourse,
     getSection,
     listCategories,
@@ -40,7 +38,6 @@
   let drift = $state<SourceDriftStatus | null>(null);
   let checkingDrift = $state(false);
   let reimporting = $state(false);
-  let deleting = $state(false);
   let error = $state<string | null>(null);
   let sidebarOpen = $state(false);
   let sidebarCollapsed = $state(false);
@@ -50,7 +47,6 @@
   let titleInputEl = $state<HTMLInputElement | null>(null);
   let confirmReimportOpen = $state(false);
   let confirmReimportMessage = $state('');
-  let confirmDeleteOpen = $state(false);
 
   let slug = $derived(decodeURIComponent($page.params.slug ?? ''));
 
@@ -195,34 +191,6 @@
       confirmReimportOpen = false;
     } finally {
       reimporting = false;
-    }
-  }
-
-  function requestDelete() {
-    if (!course || deleting) return;
-    confirmDeleteOpen = true;
-  }
-
-  function cancelDelete() {
-    if (deleting) return;
-    confirmDeleteOpen = false;
-  }
-
-  async function performDelete() {
-    if (!course || deleting) return;
-
-    deleting = true;
-    try {
-      const title = course.title;
-      await deleteCourse(course.id);
-      confirmDeleteOpen = false;
-      showToast(`Deleted “${title}”`, 'success');
-      await goto('/');
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
-      confirmDeleteOpen = false;
-    } finally {
-      deleting = false;
     }
   }
 
@@ -530,18 +498,6 @@
           {/if}
         </details>
 
-        <details class="sidebar-disclosure">
-          <summary>Delete</summary>
-          <p class="muted">Permanently removes this course folder from the vault.</p>
-          <button
-            type="button"
-            class="danger"
-            class:busy={deleting}
-            onclick={requestDelete}
-            disabled={deleting || reimporting}
-          >{deleting ? 'Deleting…' : 'Delete course'}</button>
-        </details>
-
         {#if course.sections.length}
           <p class="sidebar-nav-label">Sections</p>
           <SectionTree sections={course.sections} {activeSectionId} onSelect={selectSection} />
@@ -648,18 +604,4 @@
   busy={reimporting}
   onConfirm={performReimport}
   onCancel={cancelReimport}
-/>
-
-<ConfirmDialog
-  open={confirmDeleteOpen}
-  title="Delete course"
-  message={course
-    ? `Delete “${course.title}” permanently? Vault files for this course will be removed and cannot be undone from the library.`
-    : 'Delete this course permanently?'}
-  confirmLabel={deleting ? 'Deleting…' : 'Delete'}
-  cancelLabel="Cancel"
-  tone="danger"
-  busy={deleting}
-  onConfirm={performDelete}
-  onCancel={cancelDelete}
 />

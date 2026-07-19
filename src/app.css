@@ -685,6 +685,87 @@ h2 {
   margin-top: 2rem;
 }
 
+.library-search {
+  margin: 0 0 1rem;
+}
+
+.library-search-field {
+  align-items: center;
+  background: var(--field-bg);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-pill);
+  display: flex;
+  gap: 0.55rem;
+  max-width: 28rem;
+  min-height: 2.6rem;
+  padding: 0.2rem 0.45rem 0.2rem 0.9rem;
+  transition: border-color var(--duration-fast) var(--ease);
+  width: 100%;
+}
+
+.library-search-field:hover {
+  border-color: color-mix(in srgb, var(--border-input) 50%, var(--primary));
+}
+
+.library-search-field:focus-within {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  outline-offset: 1px;
+}
+
+.library-search-icon {
+  color: var(--text-subtle);
+  flex: none;
+}
+
+.library-search-field input {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text);
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  padding: 0.45rem 0;
+  width: 100%;
+}
+
+.library-search-field input:hover,
+.library-search-field input:focus-visible {
+  border: 0;
+  outline: none;
+}
+
+.library-search-field input::-webkit-search-cancel-button,
+.library-search-field input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+button.library-search-clear {
+  color: var(--text-muted);
+  flex: none;
+}
+
+button.library-search-clear:hover:not(:disabled),
+button.library-search-clear:focus-visible {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 .course-card {
   position: relative;
   display: flex;
@@ -2128,6 +2209,10 @@ button.reader-sidebar-backdrop:active {
 
   .app-header {
     padding: 0.65rem 1rem;
+  }
+
+  .library-search-field {
+    max-width: none;
   }
 }
 
