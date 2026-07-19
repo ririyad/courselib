@@ -23,15 +23,15 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: brown
-      accent: deep orange
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: brown
-      accent: deep orange
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
@@ -42,6 +42,9 @@ nav:
   - Usage: usage.md
   - Vault & how it works: vault.md
   - Releases: releases.md
+
+extra_css:
+  - stylesheets/extra.css
 
 plugins:
   - search

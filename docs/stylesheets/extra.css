@@ -1,0 +1,94 @@
+/* CourseLib docs theme — mirrors the app palette in src/app.css:
+   parchment light / warm charcoal dark, green primary, gold accent. */
+
+:root {
+  --md-primary-fg-color: #1d4f3a;
+  --md-primary-fg-color--light: #2f8f5f;
+  --md-primary-fg-color--dark: #163d2d;
+  --md-accent-fg-color: #876a1f;
+}
+
+/* ── Light: parchment ────────────────────────────────────────── */
+
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #f7f3ea;
+  --md-default-fg-color: #18201a;
+  --md-default-fg-color--light: #4e5b50;
+  --md-default-fg-color--lighter: #6a7568;
+  --md-default-fg-color--lightest: #e4d8bd;
+
+  --md-typeset-color: #18201a;
+  --md-typeset-a-color: #1d4f3a;
+
+  --md-accent-fg-color: #876a1f;
+
+  --md-code-bg-color: #f2ead9;
+  --md-code-fg-color: #3a3423;
+
+  --md-typeset-table-color: #e4d8bd;
+
+  --md-footer-bg-color: #18201a;
+  --md-footer-bg-color--dark: #14130d;
+}
+
+/* ── Dark: warm charcoal ─────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 60; /* warm base for derived grays */
+
+  --md-default-bg-color: #14130d;
+  --md-default-fg-color: #f3edda;
+  --md-default-fg-color--light: #c3bda7;
+  --md-default-fg-color--lighter: #948e79;
+  --md-default-fg-color--lightest: #35311f;
+
+  --md-typeset-color: #f3edda;
+  --md-typeset-a-color: #5cc091;
+
+  --md-accent-fg-color: #d9b25a;
+
+  --md-primary-fg-color: #1e1c15;
+  --md-primary-fg-color--light: #26241b;
+  --md-primary-fg-color--dark: #100f0a;
+
+  --md-code-bg-color: #100f0a;
+  --md-code-fg-color: #e9e3d0;
+
+  --md-typeset-table-color: #35311f;
+
+  --md-footer-bg-color: #100f0a;
+  --md-footer-bg-color--dark: #0b0a07;
+}
+
+/* Header/search styling on dark keeps the charcoal identity */
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: #1e1c15;
+  border-bottom: 1px solid #35311f;
+}
+
+[data-md-color-scheme="slate"] .md-search__input {
+  background-color: #26241b;
+}
+
+/* Buttons pick up the app's green primary in both schemes */
+.md-typeset .md-button--primary {
+  background-color: #1d4f3a;
+  border-color: #1d4f3a;
+  color: #ffffff;
+}
+
+.md-typeset .md-button--primary:hover {
+  background-color: #163d2d;
+  border-color: #163d2d;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  background-color: #1f7a52;
+  border-color: #1f7a52;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary:hover {
+  background-color: #268a5d;
+  border-color: #268a5d;
+}
