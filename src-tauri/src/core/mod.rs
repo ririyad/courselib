@@ -1,6 +1,8 @@
+pub mod fs_util;
 pub mod git_vault;
 pub mod indexer;
 pub mod models;
 pub mod parser;
+pub mod slugs;
 pub mod source_fetch;
 pub mod vault;

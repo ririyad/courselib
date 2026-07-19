@@ -1,0 +1,60 @@
+# Run portable validation checks on pull requests and main.
+# Windows job covers MSVC + path/SQLite behavior; macOS keeps Apple Silicon coverage.
+
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            platform: macos-14
+            rust_target: aarch64-apple-darwin
+          - name: Windows x64
+            platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: validate-${{ matrix.rust_target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build frontend
+        run: npm run build

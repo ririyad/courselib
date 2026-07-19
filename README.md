@@ -35,9 +35,11 @@ Other hosts are rejected with a clear error (no silent guessing).
 
 ## Requirements
 
-- **Node.js** 20+ (npm)
+- **Node.js** `^20.19.0` or `>=22.12.0` (npm)
 - **Rust** toolchain (see `src-tauri/Cargo.toml` rust-version)
-- Platform deps for [Tauri 2](https://v2.tauri.app/start/prerequisites/) (Xcode CLT on macOS, etc.)
+- Platform deps for [Tauri 2](https://v2.tauri.app/start/prerequisites/):
+  - **macOS:** Xcode Command Line Tools
+  - **Windows:** Visual Studio C++ Build Tools (MSVC) + Windows SDK, and the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (included on recent Windows 10/11)
 
 ---
 
@@ -51,7 +53,7 @@ npm install
 npm run tauri -- dev
 ```
 
-The app opens a native window. On first use it creates a default vault (via `dirs`) under your user data area; you can change the vault folder from **Vault settings** on the library home.
+The app opens a native window. On first use it creates a default vault under your Documents folder (`CourseLib Vault`); you can change the vault folder from **Vault settings** on the library home.
 
 ### Useful commands
 
@@ -61,25 +63,33 @@ The app opens a native window. On first use it creates a default vault (via `dir
 | `npm run build` | Build static frontend → `build/` |
 | `npm run tauri -- build` | Package release desktop app (local) |
 | `npm run tauri -- build --debug` | Package debug desktop app |
-| `npm run validate` | Rust tests + frontend build + Tauri debug build |
+| `npm run validate` | Rust tests + frontend build + Tauri debug build (cross-platform Node runner) |
 | `cd src-tauri && cargo test` | Backend unit tests only |
 
 ---
 
 ## Releases
 
-Published builds ship via **GitHub Releases**. CI currently builds **macOS** arm64 and x64 on `macos-14` (native Apple Silicon + cross-compiled Intel). Linux/Windows can be added to the same workflow later.
+Published builds ship via **GitHub Releases**. CI builds:
+
+- **macOS** arm64 and x64 on `macos-14` (native Apple Silicon + cross-compiled Intel)
+- **Windows** x64 NSIS installer on `windows-latest` (unsigned)
 
 | Surface | Purpose |
 |---------|---------|
-| [Releases](https://github.com/ririyad/courselib/releases) | Version notes + downloadable macOS assets |
+| [Releases](https://github.com/ririyad/courselib/releases) | Version notes + downloadable desktop assets |
 | [Actions → Release](https://github.com/ririyad/courselib/actions/workflows/release.yml) | Full **deploy/build log** for each publish |
+| [Actions → Validate](https://github.com/ririyad/courselib/actions/workflows/validate.yml) | PR/main Rust tests + frontend build (macOS + Windows) |
 
 ### Download (users)
 
 1. Open the [latest release](https://github.com/ririyad/courselib/releases/latest).
-2. Download the macOS asset that matches your chip (arm64 / Apple Silicon, or x64 / Intel).
-3. Open the app. If macOS blocks an unsigned build, use **Right-click → Open** (or System Settings → Privacy & Security). Apple notarization is not configured yet.
+2. Download the asset for your platform:
+   - **macOS:** arm64 (Apple Silicon) or x64 (Intel)
+   - **Windows:** x64 NSIS installer (`.exe`)
+3. Open / install the app:
+   - **macOS:** If Gatekeeper blocks an unsigned build, use **Right-click → Open** (or System Settings → Privacy & Security). Apple notarization is not configured yet.
+   - **Windows:** The installer is currently **unsigned**. SmartScreen may show **Windows protected your PC** / Unknown Publisher — choose **More info → Run anyway**. WebView2 is bootstrapped on first install if missing.
 
 ### Publish a release (maintainers)
 
@@ -159,7 +169,7 @@ Section order uses numeric prefixes; progress keys use **canonical paths** (pref
 | Search index | Available in SQLite |
 | Search UI | Planned |
 
-Architecture, schema, IPC surface, and milestone plan live in [`AGENT.md`](./AGENT.md) for contributors.
+Contributor notes and architecture details live in this README and the Rust/Svelte source under `src-tauri/` and `src/`.
 
 ---
 
@@ -176,8 +186,8 @@ courselib/
     src/core/          # vault, parser, indexer, fetch, models
     src/db/            # SQLite schema + open helpers
   static/              # icons and static assets
-  scripts/validate.sh  # full validation pipeline
-  .github/workflows/   # CI release pipeline
+  scripts/validate.mjs # full validation pipeline (cross-platform)
+  .github/workflows/   # CI validate + release pipelines
 ```
 
 ---

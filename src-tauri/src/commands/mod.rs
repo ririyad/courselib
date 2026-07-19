@@ -17,6 +17,7 @@ use crate::core::{
         CoursePathItem, CoursePathSummary, CourseProgress, ProgressStatus, ReimportCourseResult,
         SectionContent, SectionNode, SectionProgressEntry, SourceDriftStatus, WrittenCourse,
     },
+    slugs,
     source_fetch::{fetch_link, fetched_from_paste},
     vault,
 };
@@ -1142,48 +1143,20 @@ fn read_path_manifest(path: &std::path::Path) -> Result<PathManifest, String> {
 }
 
 fn unique_path_slug(vault_path: &std::path::Path, title: &str) -> String {
-    let base = {
-        let slug = slug::slugify(title);
-        if slug.is_empty() {
-            "path".to_string()
-        } else {
-            slug
-        }
-    };
+    let base = slugs::base_slug(title, "path");
     let paths_dir = vault_path.join("paths");
-    let mut candidate = base.clone();
-    let mut suffix = 2;
-
-    while paths_dir.join(format!("{candidate}.yaml")).exists() {
-        candidate = format!("{base}-{suffix}");
-        suffix += 1;
-    }
-
-    candidate
+    slugs::unique_slug(&base, |candidate| {
+        paths_dir.join(format!("{candidate}.yaml")).exists()
+    })
 }
 
 fn unique_category_slug(name: &str, categories: &[Category]) -> String {
-    let base = {
-        let slug = slug::slugify(name);
-        if slug.is_empty() {
-            "category".to_string()
-        } else {
-            slug
-        }
-    };
+    let base = slugs::base_slug(name, "category");
     let existing = categories
         .iter()
         .map(|category| category.slug.as_str())
         .collect::<HashSet<_>>();
-    let mut candidate = base.clone();
-    let mut suffix = 2;
-
-    while existing.contains(candidate.as_str()) {
-        candidate = format!("{base}-{suffix}");
-        suffix += 1;
-    }
-
-    candidate
+    slugs::unique_slug(&base, |candidate| existing.contains(candidate))
 }
 
 fn read_yaml_file<T: for<'de> Deserialize<'de>>(path: &std::path::Path) -> anyhow::Result<T> {
