@@ -1,0 +1,17 @@
+---
+description: Architecture-related git commit message prefix convention
+alwaysApply: true
+---
+
+# Architecture commit messages
+
+When creating git commits for architecture-related work (platform support, structural refactors, cross-cutting system changes), prefix the commit subject with `[arc_name]` where `arc_name` is a short lowercase label for the architecture/feature area.
+
+Format: `[arc_name] <concise commit subject>`
+
+Examples:
+- `[windows] Harden filesystem slugs for reserved names`
+- `[vault] Retry Git init rename under file locks`
+- `[indexer] Drop SQLite connections before Windows cleanup`
+
+Do not use this prefix for trivial one-off fixes unrelated to an architecture area unless asked.
