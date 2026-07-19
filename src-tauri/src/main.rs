@@ -4,8 +4,11 @@ mod db;
 
 use std::{path::PathBuf, sync::Mutex};
 
-use crate::core::{indexer, vault};
-use tauri::Manager;
+use crate::core::{assets, indexer, vault};
+use tauri::{
+    http::{header, Response, StatusCode},
+    Manager,
+};
 
 pub struct AppState {
     vault_path: Mutex<PathBuf>,
@@ -27,6 +30,24 @@ impl AppState {
 
 fn main() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("courselib-asset", |context, request| {
+            let app = context.app_handle();
+            let state = app.state::<AppState>();
+            let vault_path = match state.vault_path.lock() {
+                Ok(path) => path.clone(),
+                Err(_) => return asset_error_response(StatusCode::INTERNAL_SERVER_ERROR),
+            };
+            match assets::serve(&vault_path, request.uri().path()) {
+                Ok((bytes, media_type)) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, media_type)
+                    .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+                    .header("X-Content-Type-Options", "nosniff")
+                    .body(bytes)
+                    .unwrap_or_else(|_| asset_error_response(StatusCode::INTERNAL_SERVER_ERROR)),
+                Err(_) => asset_error_response(StatusCode::NOT_FOUND),
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let vault_path = vault::load_or_default_vault_path(app.handle())?;
@@ -65,4 +86,13 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running CourseLib");
+}
+
+fn asset_error_response(status: StatusCode) -> Response<Vec<u8>> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header("X-Content-Type-Options", "nosniff")
+        .body(Vec::new())
+        .expect("static asset error response should build")
 }
