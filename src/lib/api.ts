@@ -22,11 +22,23 @@ export type WrittenCourse = {
   slug: string;
   vault_path: string;
   sections: WrittenSection[];
+  asset_warnings: string[];
+};
+
+export type LocalAttachment = {
+  path: string;
+  name?: string | null;
 };
 
 export type ImportCourseSource =
   | { Link: { url: string } }
-  | { Pasted: { content: string; title_hint?: string | null } };
+  | {
+      Pasted: {
+        content: string;
+        title_hint?: string | null;
+        attachments?: LocalAttachment[];
+      };
+    };
 
 export type ReindexSummary = {
   courses: number;
@@ -95,6 +107,7 @@ export type SourceDriftStatus = {
 export type ReimportCourseResult = {
   course: CourseDetail;
   orphaned_progress_paths: string[];
+  asset_warnings: string[];
   git_commit: string | null;
 };
 

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::core::{
+    assets::LocalAttachment,
     git_vault,
     indexer::{self, ReindexSummary},
     models::{
@@ -31,6 +32,8 @@ pub enum ImportCourseSource {
     Pasted {
         content: String,
         title_hint: Option<String>,
+        #[serde(default)]
+        attachments: Vec<LocalAttachment>,
     },
 }
 
@@ -133,24 +136,27 @@ pub async fn import_course(
         .map_err(|_| "vault state lock poisoned".to_string())?
         .clone();
 
-    let fetched = match source {
-        ImportCourseSource::Link { url } => {
-            fetch_link(&url).await.map_err(|err| err.to_string())?
-        }
+    let (fetched, attachments) = match source {
+        ImportCourseSource::Link { url } => (
+            fetch_link(&url).await.map_err(|err| err.to_string())?,
+            Vec::new(),
+        ),
         ImportCourseSource::Pasted {
             content,
             title_hint,
+            attachments,
         } => {
             let title = title_hint
                 .map(|title| title.trim().to_string())
                 .filter(|title| !title.is_empty())
                 .ok_or_else(|| "course title is required".to_string())?;
-            fetched_from_paste(content, Some(title))
+            (fetched_from_paste(content, Some(title)), attachments)
         }
     };
 
-    let written =
-        vault::write_fetched_course(&vault_path, fetched).map_err(|err| err.to_string())?;
+    let written = vault::write_fetched_course_with_assets(&vault_path, fetched, &attachments)
+        .await
+        .map_err(|err| err.to_string())?;
 
     let mut conn = open_index(&state)?;
     indexer::reindex_course(&mut conn, &vault_path, &written.slug)
@@ -734,14 +740,17 @@ pub async fn reimport_course(
     )
     .map_err(|err| err.to_string())?;
 
-    let reimported = vault::reimport_fetched_course(&vault_path, &source.slug, fetched)
+    let reimported = vault::reimport_fetched_course_with_assets(&vault_path, &source.slug, fetched)
+        .await
         .map_err(|err| err.to_string())?;
     indexer::reindex_course(&mut conn, &vault_path, &source.slug).map_err(|err| err.to_string())?;
     let course = load_course_detail(&conn, &source.id)?;
+    let asset_warnings = reimported.written.asset_warnings;
 
     Ok(ReimportCourseResult {
         course,
         orphaned_progress_paths: reimported.orphaned_progress_paths,
+        asset_warnings,
         git_commit,
     })
 }
@@ -1219,6 +1228,34 @@ fn markdown_options<'a>() -> Options<'a> {
     options.extension.tasklist = true;
     options.extension.strikethrough = true;
     options.extension.autolink = true;
-    options.render.unsafe_ = true;
+    // Imported Markdown is injected with `{@html}` in the reader. Keep raw
+    // HTML disabled so only Comrak-generated markup reaches the webview.
+    options.render.unsafe_ = false;
     options
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rendered_markdown_does_not_allow_raw_html() {
+        let html = markdown_to_html(
+            "# Safe\n\n<img src=\"https://example.com/x\" onerror=\"alert(1)\">",
+            &markdown_options(),
+        );
+        assert!(!html.contains("<img"));
+        assert!(!html.contains("onerror"));
+        assert!(html.contains("<!-- raw HTML omitted -->"));
+    }
+
+    #[test]
+    fn rendered_markdown_keeps_managed_asset_protocol() {
+        let html = markdown_to_html(
+            "![Diagram](courselib-asset://localhost/course/demo/local-abc)",
+            &markdown_options(),
+        );
+        assert!(html.contains("src=\"courselib-asset://localhost/course/demo/local-abc\""));
+        assert!(html.contains("alt=\"Diagram\""));
+    }
 }
