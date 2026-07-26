@@ -1,15 +1,29 @@
 # CourseLib
 
-A **local-first, offline-capable** personal knowledge library for desktop.
+A **local-first, offline-capable** personal knowledge library that turns the material you already have into courses you will actually want to finish.
 
-Turn markdown — pasted in, or pulled from GitHub / GitLab / Codeberg — into navigable reading courses, or turn a YouTube playlist into a trackable video course. Your **vault folder on disk** is the source of truth; SQLite is only a disposable index you can rebuild anytime.
+Your next course may already be sitting in an **Obsidian vault**, a repository README, a folder of personal notes, or a conversation with an LLM. CourseLib turns that Markdown into a focused reading experience with navigation, progress, and structure. It can also turn a YouTube playlist into a trackable video course.
 
-Built with **Tauri 2** (Rust) + **SvelteKit**.
+Your **vault folder on disk** remains the source of truth; SQLite is only a disposable index you can rebuild anytime. Built with **Tauri 2** (Rust) + **SvelteKit**.
 
 [Download the latest release](https://github.com/ririyad/courselib/releases/latest){ .md-button .md-button--primary }
 [Installation guide](installation.md){ .md-button }
 
 ---
+
+## Bring the Markdown you already have
+
+CourseLib does not ask you to rewrite your knowledge in a special format or lock it inside another service. If it is Markdown, it belongs here.
+
+- **Obsidian notes** — copy the contents of any `.md` note and paste it into CourseLib. Your headings become course navigation.
+- **Purpose-built LLM courses** — ask your preferred model to produce a structured Markdown course on exactly what you want to learn, then paste the result directly into the app.
+- **Repository documentation** — import a README or guide from GitHub, GitLab, or Codeberg using its link.
+- **Your own study notes** — rough notes, workshop material, technical guides, and knowledge dumps are all welcome. Clean headings help, but even a document without headings becomes a readable overview.
+
+Once imported, CourseLib turns plain Markdown into an organized course with a section tree, rendered content, categories, and durable progress tracking. The source stays yours, the files stay readable, and the experience feels like a library rather than a pile of documents.
+
+!!! tip "Generate a course with an LLM"
+    Try a prompt such as: **“Create a practical, structured Markdown course about _[topic]_. Use one `#` title, clear `##` and `###` sections, examples, exercises, and a final review.”** Paste the response into **Import → Paste markdown**, give it a title, and start learning.
 
 ## Features
 
