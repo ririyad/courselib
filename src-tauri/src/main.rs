@@ -10,6 +10,9 @@ use tauri::{
     Manager,
 };
 
+#[cfg(not(dev))]
+use tauri::{ipc::CapabilityBuilder, Url};
+
 pub struct AppState {
     vault_path: Mutex<PathBuf>,
     db_path: PathBuf,
@@ -31,7 +34,21 @@ impl AppState {
 }
 
 fn main() {
-    tauri::Builder::default()
+    #[cfg(not(dev))]
+    let localhost_port = portpicker::pick_unused_port().expect("failed to find a local app port");
+    let builder = tauri::Builder::default();
+
+    // YouTube rejects embedded playback from Tauri's production custom protocol
+    // (Error 153: missing an HTTP referrer). In packaged builds, serve the app on
+    // a random loopback-only HTTP origin so the player receives a valid referrer.
+    #[cfg(not(dev))]
+    let builder = builder.plugin(
+        tauri_plugin_localhost::Builder::new(localhost_port)
+            .host("127.0.0.1")
+            .build(),
+    );
+
+    builder
         .register_uri_scheme_protocol("courselib-asset", |context, request| {
             let app = context.app_handle();
             let state = app.state::<AppState>();
@@ -51,7 +68,7 @@ fn main() {
             }
         })
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .setup(move |app| {
             let vault_path = vault::load_or_default_vault_path(app.handle())?;
             vault::ensure_vault(&vault_path)?;
             let db_path = db::default_db_path(app.handle())?;
@@ -59,6 +76,23 @@ fn main() {
             let mut conn = db::open(&db_path)?;
             indexer::reindex_vault(&mut conn, &vault_path)?;
             app.manage(AppState::new(vault_path, db_path));
+
+            #[cfg(not(dev))]
+            {
+                let url: Url = format!("http://127.0.0.1:{localhost_port}").parse()?;
+                app.add_capability(
+                    CapabilityBuilder::new("loopback-app")
+                        .remote(url.to_string())
+                        .local(false)
+                        .window("main")
+                        .permission("core:default")
+                        .permission("dialog:default")
+                        .permission("app-commands"),
+                )?;
+                app.get_webview_window("main")
+                    .ok_or_else(|| anyhow::anyhow!("main window was not created"))?
+                    .navigate(url)?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -1,0 +1,30 @@
+[[permission]]
+identifier = "app-commands"
+description = "Allows the CourseLib frontend to invoke the application's command API."
+commands.allow = [
+  "get_app_status",
+  "set_vault_path",
+  "import_course",
+  "fetch_youtube_playlist",
+  "import_video_course",
+  "delete_course",
+  "list_courses",
+  "get_course",
+  "get_section",
+  "update_course_meta",
+  "list_categories",
+  "create_category",
+  "rename_category",
+  "delete_category",
+  "list_paths",
+  "create_path",
+  "get_path",
+  "add_course_to_path",
+  "reorder_path_items",
+  "get_path_progress",
+  "mark_section_status",
+  "get_course_progress",
+  "check_source_drift",
+  "reimport_course",
+  "reindex_vault",
+]

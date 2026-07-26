@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default desktop permissions for CourseLib",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": ["core:default", "dialog:default", "app-commands"]
 }
