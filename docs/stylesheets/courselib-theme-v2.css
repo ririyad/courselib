@@ -95,15 +95,15 @@
 
 /* The outlined installation button must not inherit the charcoal header
    primary in dark mode, where it would disappear into the page background. */
-[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary) {
-  color: #5cc091;
-  border-color: #5cc091;
-  background-color: transparent;
+body[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary) {
+  color: #5cc091 !important;
+  border-color: #5cc091 !important;
+  background-color: transparent !important;
 }
 
-[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary):hover,
-[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary):focus-visible {
-  color: #ffffff;
-  border-color: #1f7a52;
-  background-color: #1f7a52;
+body[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary):hover,
+body[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary):focus-visible {
+  color: #ffffff !important;
+  border-color: #1f7a52 !important;
+  background-color: #1f7a52 !important;
 }

@@ -44,7 +44,8 @@ nav:
   - Releases: releases.md
 
 extra_css:
-  - stylesheets/extra.css
+  # Versioned filename prevents browsers from reusing stale GitHub Pages CSS.
+  - stylesheets/courselib-theme-v2.css
 
 plugins:
   - search
