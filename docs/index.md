@@ -2,7 +2,7 @@
 
 A **local-first, offline-capable** personal knowledge library for desktop.
 
-Turn markdown — pasted in, or pulled from GitHub / GitLab / Codeberg — into navigable courses with sections, reading progress, and categories. Your **vault folder on disk** is the source of truth; SQLite is only a disposable index you can rebuild anytime.
+Turn markdown — pasted in, or pulled from GitHub / GitLab / Codeberg — into navigable reading courses, or turn a YouTube playlist into a trackable video course. Your **vault folder on disk** is the source of truth; SQLite is only a disposable index you can rebuild anytime.
 
 Built with **Tauri 2** (Rust) + **SvelteKit**.
 
@@ -13,7 +13,9 @@ Built with **Tauri 2** (Rust) + **SvelteKit**.
 
 ## Features
 
-- **Import courses** from pasted markdown or a supported remote markdown URL
+- **Import reading courses** from pasted markdown or a supported remote markdown URL
+- **Import video courses** from public or unlisted YouTube playlists, with a complete video preview before creation
+- **Embedded video player** with the same progress statuses, categories, and learning-path support as reading courses
 - **Offline images** — repository images are cached in the vault; pasted courses can include local attachments
 - **Library view** with progress bars, tile/list layouts, category filters, and instant metadata search
 - **Reader** with a section tree, rendered HTML, and per-section status (not started / in progress / completed)
@@ -22,24 +24,27 @@ Built with **Tauri 2** (Rust) + **SvelteKit**.
 - **Learning paths** for sequencing courses into curricula, with rolled-up progress
 - **Source drift checks and manual re-import** for courses imported from supported links
 - **Vault on disk** — plain files you can browse, back up, or version yourself
-- Works **offline after import** (network is only used when fetching a source link)
+- Reading courses work **offline after import**; YouTube video playback requires an internet connection
 
-## Supported import hosts
+## Supported import sources
 
-| Host | Notes |
-|------|--------|
+| Source | Notes |
+|--------|-------|
 | **GitHub** | Blob URLs → raw content; bare repo URLs resolve the default-branch `README.md` |
 | **GitLab** | Raw blob paths |
 | **Codeberg** | Gitea-style raw branch URLs |
+| **YouTube** | Public or unlisted playlist URLs; CourseLib fetches the full playlist without requiring an API key |
 | **Paste** | Any markdown pasted into the app |
 
-Other hosts are rejected with a clear error (no silent guessing).
+Unsupported hosts and invalid playlist URLs are rejected with a clear error (no silent guessing).
 
 ## What works today
 
 | Area | Status |
 |------|--------|
-| Import (paste + URL) | Available |
+| Reading-course import (paste + URL) | Available |
+| YouTube playlist video courses | Available |
+| Embedded YouTube player | Available — internet required for playback |
 | Library + category filters | Available |
 | Tile / list library views | Available |
 | Course metadata search | Available — title, description, and category names |

@@ -2,7 +2,7 @@
 
 A **local-first, offline-capable** personal knowledge library for desktop.
 
-Turn markdown — pasted in, or pulled from GitHub / GitLab / Codeberg — into navigable courses with sections, reading progress, and categories. Your **vault folder on disk** is the source of truth; SQLite is only a disposable index you can rebuild anytime.
+Turn markdown — pasted in, or pulled from GitHub / GitLab / Codeberg — into navigable reading courses, or turn a YouTube playlist into a trackable video course. Your **vault folder on disk** is the source of truth; SQLite is only a disposable index you can rebuild anytime.
 
 Built with **Tauri 2** (Rust) + **SvelteKit**.
 
@@ -12,7 +12,9 @@ Built with **Tauri 2** (Rust) + **SvelteKit**.
 
 ## Features
 
-- **Import courses** from pasted markdown or a supported remote markdown URL
+- **Import reading courses** from pasted markdown or a supported remote markdown URL
+- **Import video courses** from public or unlisted YouTube playlists, with a complete preview before creation
+- **Embedded YouTube player** with per-video status, progress, categories, and learning-path support
 - **Offline images** — repository images are cached in the vault; pasted courses can include local attachments
 - **Library view** with progress bars, tile/list layouts, category filters, and instant metadata search
 - **Reader** with a section tree, rendered HTML, and per-section status (not started / in progress / completed)
@@ -21,18 +23,19 @@ Built with **Tauri 2** (Rust) + **SvelteKit**.
 - **Learning paths** for sequencing courses into curricula, with rolled-up progress
 - **Source drift checks and manual re-import** for courses imported from supported links
 - **Vault on disk** — plain files you can browse, back up, or version yourself
-- Works **offline after import** (network is only used when fetching a source link)
+- Reading courses work **offline after import**; YouTube video playback requires an internet connection
 
-### Supported import hosts
+### Supported import sources
 
-| Host | Notes |
-|------|--------|
+| Source | Notes |
+|--------|-------|
 | **GitHub** | Blob URLs → raw content; bare repo URLs resolve the default-branch `README.md` |
 | **GitLab** | Raw blob paths |
 | **Codeberg** | Gitea-style raw branch URLs |
+| **YouTube** | Public or unlisted playlist URLs; no API key required |
 | **Paste** | Any markdown pasted into the app |
 
-Other hosts are rejected with a clear error (no silent guessing).
+Unsupported hosts and invalid playlist URLs are rejected with a clear error (no silent guessing).
 
 ---
 
@@ -128,11 +131,12 @@ Workflow file: [`.github/workflows/release.yml`](./.github/workflows/release.yml
 ## How it works
 
 ```
-Markdown source  →  parse headings (comrak)  →  vault files on disk
-                                                      ↓
-                                              SQLite index (rebuildable)
-                                                      ↓
-                                              UI via Tauri invoke
+Markdown source  →  parse headings (comrak) ─┐
+                                              ├→ vault files on disk
+YouTube playlist →  fetch video metadata ─────┘          ↓
+                                                  SQLite index (rebuildable)
+                                                          ↓
+                                                  UI via Tauri invoke
 ```
 
 **Rule:** mutating actions write the vault first, then update the index. If the index is wrong or deleted, **Reindex vault** restores it from the folder.
@@ -143,10 +147,11 @@ Markdown source  →  parse headings (comrak)  →  vault files on disk
 vault/
   courses/
     <course-slug>/
-      _source.md          # snapshot of the import
-      _course.yaml        # title, categories, source metadata
-      _progress.yaml      # section completion by canonical path
-      _assets.yaml        # image source, hash, type, and ownership metadata
+      _source.md/json     # markdown or YouTube playlist snapshot
+      _course.yaml        # title, course type, categories, source metadata
+      _progress.yaml      # section/video completion by canonical path
+      _videos.yaml        # video metadata (video courses)
+      _assets.yaml        # image metadata (reading courses)
       assets/
         remote/           # downloaded repository images, refreshed on re-import
         local/            # user-selected attachments, preserved on re-import
@@ -164,7 +169,9 @@ Section order uses numeric prefixes; progress keys use **canonical paths** (pref
 
 | Area | Status |
 |------|--------|
-| Import (paste + URL) | Available |
+| Reading-course import (paste + URL) | Available |
+| YouTube playlist video courses | Available |
+| Embedded YouTube player | Available — internet required for playback |
 | Library + category filters | Available |
 | Tile / list library views | Available |
 | Course metadata search | Available — title, description, and category names |
@@ -209,6 +216,7 @@ courselib/
 - Default vault path comes from the OS user dirs crate; choose another folder anytime in the UI.
 - Image imports accept PNG, JPEG, GIF, and WebP (up to 10 MiB each). SVG is intentionally rejected.
 - Remote course images are downloaded from supported repository/raw hosts so reading remains offline-capable.
+- YouTube playlist metadata is stored locally, but video media remains on YouTube and requires network access.
 - Prefer small, focused changes. Keep vault writes ahead of index updates.
 
 ---

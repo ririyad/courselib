@@ -12,6 +12,23 @@ Published builds ship via **GitHub Releases**. CI builds:
 | [Actions → Validate](https://github.com/ririyad/courselib/actions/workflows/validate.yml) | PR/main Rust tests + frontend build (macOS + Windows) |
 | [Actions → Docs](https://github.com/ririyad/courselib/actions/workflows/docs.yml) | Build and deploy this documentation site |
 
+## Latest release: v0.7.0
+
+CourseLib v0.7.0 adds video courses built from YouTube playlists:
+
+- Fetch and preview all videos in a public or unlisted playlist
+- Require a custom course title before creation
+- Preserve playlist order, including playlists with more than 99 videos
+- Play videos in a privacy-enhanced embedded YouTube player
+- Track per-video status and aggregate progress
+- Use video courses with categories and learning paths
+- Persist playlist snapshots and video metadata in the local vault
+
+[Download CourseLib v0.7.0](https://github.com/ririyad/courselib/releases/tag/v0.7.0){ .md-button .md-button--primary }
+
+!!! note "Online playback"
+    Video metadata and progress are local, but YouTube media is not downloaded. An internet connection is required to play videos.
+
 ## Download (users)
 
 See [Installation](installation.md) for platform-specific open/install steps, including Gatekeeper and SmartScreen notes.
