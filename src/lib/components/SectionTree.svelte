@@ -27,7 +27,10 @@
         class:active={section.id === activeSectionId}
         onclick={() => onSelect(section)}
       >
-        <span>{section.title}</span>
+        <span class="section-tree-title">
+          <span>{section.title}</span>
+          {#if section.video?.duration}<small>{section.video.duration}</small>{/if}
+        </span>
         <span
           class={`status-dot ${section.status}`}
           aria-label={statusLabels[section.status]}

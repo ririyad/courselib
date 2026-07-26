@@ -14,13 +14,14 @@ use crate::core::{
     git_vault,
     indexer::{self, ReindexSummary},
     models::{
-        AppStatus, Category, CourseDetail, CourseListItem, CourseManifest, CoursePathDetail,
-        CoursePathItem, CoursePathSummary, CourseProgress, ProgressStatus, ReimportCourseResult,
-        SectionContent, SectionNode, SectionProgressEntry, SourceDriftStatus, WrittenCourse,
+        AppStatus, Category, CourseDetail, CourseKind, CourseListItem, CourseManifest,
+        CoursePathDetail, CoursePathItem, CoursePathSummary, CourseProgress, ProgressStatus,
+        ReimportCourseResult, SectionContent, SectionNode, SectionProgressEntry, SourceDriftStatus,
+        VideoInfo, VideoPlaylistPreview, WrittenCourse,
     },
     slugs,
     source_fetch::{fetch_link, fetched_from_paste},
-    vault,
+    vault, youtube,
 };
 use crate::{db, AppState};
 
@@ -76,6 +77,7 @@ struct FlatSectionRow {
     parent_section_id: Option<String>,
     canonical_path: String,
     title: String,
+    video: Option<VideoInfo>,
     heading_level: u8,
     order_index: usize,
     status: ProgressStatus,
@@ -87,6 +89,7 @@ struct CourseSourceIdentity {
     id: String,
     slug: String,
     vault_path: String,
+    source_type: String,
     origin_url: Option<String>,
     content_hash: Option<String>,
 }
@@ -166,6 +169,59 @@ pub async fn import_course(
 }
 
 #[tauri::command]
+pub async fn fetch_youtube_playlist(
+    state: State<'_, AppState>,
+    playlist_url: String,
+) -> Result<VideoPlaylistPreview, String> {
+    let playlist = youtube::fetch_playlist(&playlist_url)
+        .await
+        .map_err(|err| err.to_string())?;
+    state
+        .playlist_cache
+        .lock()
+        .map_err(|_| "playlist cache lock poisoned".to_string())?
+        .insert(playlist.playlist_id.clone(), playlist.clone());
+    Ok(playlist)
+}
+
+#[tauri::command]
+pub async fn import_video_course(
+    state: State<'_, AppState>,
+    title: String,
+    playlist_url: String,
+) -> Result<WrittenCourse, String> {
+    if title.trim().is_empty() {
+        return Err("course title is required".to_string());
+    }
+
+    let playlist_id =
+        youtube::playlist_id_from_url(&playlist_url).map_err(|err| err.to_string())?;
+    let cached = state
+        .playlist_cache
+        .lock()
+        .map_err(|_| "playlist cache lock poisoned".to_string())?
+        .remove(&playlist_id);
+    let playlist = match cached {
+        Some(playlist) => playlist,
+        None => youtube::fetch_playlist(&playlist_url)
+            .await
+            .map_err(|err| err.to_string())?,
+    };
+    let vault_path = state
+        .vault_path
+        .lock()
+        .map_err(|_| "vault state lock poisoned".to_string())?
+        .clone();
+    let written =
+        vault::write_video_course(&vault_path, &title, &playlist).map_err(|err| err.to_string())?;
+
+    let mut conn = open_index(&state)?;
+    indexer::reindex_course(&mut conn, &vault_path, &written.slug)
+        .map_err(|err| err.to_string())?;
+    Ok(written)
+}
+
+#[tauri::command]
 pub fn delete_course(state: State<'_, AppState>, course_id: String) -> Result<(), String> {
     let vault_path = state
         .vault_path
@@ -198,7 +254,7 @@ pub fn list_courses(
 
     let mut stmt = conn
         .prepare(
-            "SELECT c.id, c.slug, c.title, c.description,
+            "SELECT c.id, c.slug, c.title, c.course_type, c.description,
                     COALESCE(COUNT(DISTINCT cs.id), 0) AS section_count
              FROM courses c
              LEFT JOIN course_sections cs ON cs.course_id = c.id
@@ -206,7 +262,7 @@ pub fn list_courses(
              LEFT JOIN categories cat ON cat.id = cc.category_id
              WHERE (?1 = 1 OR c.archived_at IS NULL)
                AND (?2 IS NULL OR cat.slug = ?2)
-             GROUP BY c.id, c.slug, c.title, c.description
+             GROUP BY c.id, c.slug, c.title, c.course_type, c.description
              ORDER BY lower(c.title)",
         )
         .map_err(|err| err.to_string())?;
@@ -223,8 +279,9 @@ pub fn list_courses(
                     id,
                     slug: row.get(1)?,
                     title: row.get(2)?,
-                    description: row.get(3)?,
-                    section_count: row.get::<_, i64>(4)? as usize,
+                    course_type: course_kind_from_str(&row.get::<_, String>(3)?),
+                    description: row.get(4)?,
+                    section_count: row.get::<_, i64>(5)? as usize,
                     progress,
                 })
             },
@@ -250,7 +307,9 @@ pub fn get_section(
     let conn = open_index(&state)?;
     let row = conn
         .query_row(
-            "SELECT cs.id, cs.course_id, cs.canonical_path, cs.title, cs.vault_path
+            "SELECT cs.id, cs.course_id, cs.canonical_path, cs.title, cs.vault_path,
+                    cs.video_id, cs.video_url, cs.video_embed_url, cs.video_duration,
+                    cs.video_duration_seconds, cs.video_thumbnail_url
              FROM course_sections cs
              WHERE cs.id = ?1",
             params![section_id],
@@ -261,6 +320,7 @@ pub fn get_section(
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
+                    video_info_from_row(row, 5, 3)?,
                 ))
             },
         )
@@ -276,6 +336,7 @@ pub fn get_section(
         course_id: row.1,
         canonical_path: row.2,
         title: row.3,
+        video: row.5,
         raw_markdown,
         html,
     })
@@ -673,6 +734,19 @@ pub async fn check_source_drift(
     let source = load_course_source_identity(&conn, &course_id)?;
 
     let checked_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    if source.source_type == "youtube" {
+        return Ok(SourceDriftStatus {
+            course_id: source.id,
+            source_available: false,
+            changed: false,
+            current_hash: source.content_hash,
+            latest_hash: None,
+            origin_url: source.origin_url,
+            checked_at,
+            orphaned_progress_paths: Vec::new(),
+        });
+    }
+
     let Some(origin_url) = source.origin_url.clone() else {
         return Ok(SourceDriftStatus {
             course_id: source.id,
@@ -727,6 +801,9 @@ pub async fn reimport_course(
 
     let mut conn = open_index(&state)?;
     let source = load_course_source_identity(&conn, &course_id)?;
+    if source.source_type == "youtube" {
+        return Err("video playlist refresh is not available yet".to_string());
+    }
     let origin_url = source.origin_url.clone().ok_or_else(|| {
         "pasted courses cannot be re-imported because they have no source URL".to_string()
     })?;
@@ -779,7 +856,7 @@ fn load_course_source_identity(
     course_id: &str,
 ) -> Result<CourseSourceIdentity, String> {
     conn.query_row(
-        "SELECT id, slug, vault_path, origin_url, content_hash
+        "SELECT id, slug, vault_path, source_type, origin_url, content_hash
          FROM courses
          WHERE id = ?1 OR slug = ?1",
         params![course_id],
@@ -788,8 +865,9 @@ fn load_course_source_identity(
                 id: row.get(0)?,
                 slug: row.get(1)?,
                 vault_path: row.get(2)?,
-                origin_url: row.get(3)?,
-                content_hash: row.get(4)?,
+                source_type: row.get(3)?,
+                origin_url: row.get(4)?,
+                content_hash: row.get(5)?,
             })
         },
     )
@@ -801,14 +879,15 @@ fn load_course_source_identity(
 fn load_course_detail(conn: &Connection, course_id: &str) -> Result<CourseDetail, String> {
     let course = conn
         .query_row(
-            "SELECT id, slug, title, description FROM courses WHERE id = ?1 OR slug = ?1",
+            "SELECT id, slug, title, course_type, description FROM courses WHERE id = ?1 OR slug = ?1",
             params![course_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             },
         )
@@ -825,7 +904,8 @@ fn load_course_detail(conn: &Connection, course_id: &str) -> Result<CourseDetail
         id: course.0,
         slug: course.1,
         title: course.2,
-        description: course.3,
+        course_type: course_kind_from_str(&course.3),
+        description: course.4,
         categories,
         progress,
         sections,
@@ -833,21 +913,22 @@ fn load_course_detail(conn: &Connection, course_id: &str) -> Result<CourseDetail
 }
 
 fn load_course_list_item(conn: &Connection, course_id: &str) -> Result<CourseListItem, String> {
-    let (id, slug, title, description, section_count) = conn
+    let (id, slug, title, course_type, description, section_count) = conn
         .query_row(
-            "SELECT c.id, c.slug, c.title, c.description, COUNT(cs.id)
+            "SELECT c.id, c.slug, c.title, c.course_type, c.description, COUNT(cs.id)
              FROM courses c
              LEFT JOIN course_sections cs ON cs.course_id = c.id
              WHERE c.id = ?1 OR c.slug = ?1
-             GROUP BY c.id, c.slug, c.title, c.description",
+             GROUP BY c.id, c.slug, c.title, c.course_type, c.description",
             params![course_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, i64>(4)? as usize,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, i64>(5)? as usize,
                 ))
             },
         )
@@ -861,6 +942,7 @@ fn load_course_list_item(conn: &Connection, course_id: &str) -> Result<CourseLis
         id,
         slug,
         title,
+        course_type: course_kind_from_str(&course_type),
         description,
         section_count,
     })
@@ -1005,7 +1087,9 @@ fn load_section_rows(conn: &Connection, course_id: &str) -> Result<Vec<FlatSecti
     let mut stmt = conn
         .prepare(
             "SELECT cs.id, cs.parent_section_id, cs.canonical_path, cs.title, cs.heading_level,
-                    cs.order_index, COALESCE(sp.status, 'not_started'), sp.completed_at
+                    cs.order_index, COALESCE(sp.status, 'not_started'), sp.completed_at,
+                    cs.video_id, cs.video_url, cs.video_embed_url, cs.video_duration,
+                    cs.video_duration_seconds, cs.video_thumbnail_url
              FROM course_sections cs
              LEFT JOIN section_progress sp ON sp.section_id = cs.id
              WHERE cs.course_id = ?1
@@ -1020,6 +1104,7 @@ fn load_section_rows(conn: &Connection, course_id: &str) -> Result<Vec<FlatSecti
                 parent_section_id: row.get(1)?,
                 canonical_path: row.get(2)?,
                 title: row.get(3)?,
+                video: video_info_from_row(row, 8, 3)?,
                 heading_level: row.get::<_, i64>(4)? as u8,
                 order_index: row.get::<_, i64>(5)? as usize,
                 status: progress_status_from_str(&row.get::<_, String>(6)?),
@@ -1047,6 +1132,7 @@ fn build_section_tree(rows: &[FlatSectionRow], parent_id: Option<&str>) -> Vec<S
             id: row.id,
             canonical_path: row.canonical_path,
             title: row.title,
+            video: row.video,
             heading_level: row.heading_level,
             order_index: row.order_index,
             status: row.status,
@@ -1212,6 +1298,34 @@ fn write_progress_entry(
     };
     std::fs::write(path, yaml)?;
     Ok(())
+}
+
+fn course_kind_from_str(value: &str) -> CourseKind {
+    match value {
+        "video" => CourseKind::Video,
+        _ => CourseKind::Text,
+    }
+}
+
+fn video_info_from_row(
+    row: &rusqlite::Row<'_>,
+    start: usize,
+    title_index: usize,
+) -> rusqlite::Result<Option<VideoInfo>> {
+    let Some(video_id) = row.get::<_, Option<String>>(start)? else {
+        return Ok(None);
+    };
+    Ok(Some(VideoInfo {
+        video_id,
+        title: row.get(title_index)?,
+        url: row.get(start + 1)?,
+        embed_url: row.get(start + 2)?,
+        duration: row.get(start + 3)?,
+        duration_seconds: row
+            .get::<_, Option<i64>>(start + 4)?
+            .map(|value| value as u64),
+        thumbnail_url: row.get(start + 5)?,
+    }))
 }
 
 fn progress_status_from_str(value: &str) -> ProgressStatus {

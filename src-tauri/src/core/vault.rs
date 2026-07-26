@@ -5,18 +5,20 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use chrono::{SecondsFormat, Utc};
 use tauri::{AppHandle, Manager};
 
 use crate::core::{
     assets::{self, LocalAttachment},
     fs_util, git_vault,
     models::{
-        AppSettings, AppStatus, Category, CourseManifest, SectionProgressEntry, WrittenCourse,
+        AppSettings, AppStatus, Category, CourseKind, CourseManifest, CourseSource,
+        SectionProgressEntry, SourceType, VideoManifestEntry, VideoPlaylistPreview, WrittenCourse,
         WrittenSection,
     },
     parser::{parse_markdown_course, ParsedSection},
     slugs,
-    source_fetch::FetchedMarkdown,
+    source_fetch::{content_hash, FetchedMarkdown},
 };
 use serde::{Deserialize, Serialize};
 
@@ -163,6 +165,7 @@ fn write_fetched_course_at(
     let manifest = CourseManifest {
         title: parsed.title.clone(),
         slug: course_slug.to_string(),
+        course_type: CourseKind::Text,
         description: None,
         categories: Vec::new(),
         source: fetched.source,
@@ -183,6 +186,93 @@ fn write_fetched_course_at(
         vault_path: course_path.to_string_lossy().into_owned(),
         sections,
         asset_warnings,
+    })
+}
+
+pub fn write_video_course(
+    vault_path: &Path,
+    title: &str,
+    playlist: &VideoPlaylistPreview,
+) -> Result<WrittenCourse> {
+    ensure_vault(vault_path)?;
+    let title = title.trim();
+    if title.is_empty() {
+        anyhow::bail!("course title is required");
+    }
+    if playlist.videos.is_empty() {
+        anyhow::bail!("the playlist has no videos to import");
+    }
+
+    let course_slug = unique_course_slug(vault_path, title);
+    let course_path = vault_path.join("courses").join(&course_slug);
+    let sections_path = course_path.join("sections");
+    fs::create_dir_all(&sections_path)
+        .with_context(|| format!("failed to create {}", sections_path.display()))?;
+
+    let snapshot = serde_json::to_string_pretty(playlist)
+        .context("failed to serialize YouTube playlist snapshot")?;
+    fs::write(course_path.join("_source.json"), format!("{snapshot}\n"))
+        .with_context(|| format!("failed to write playlist snapshot for {course_slug}"))?;
+
+    let manifest = CourseManifest {
+        title: title.to_string(),
+        slug: course_slug.clone(),
+        course_type: CourseKind::Video,
+        description: Some(format!(
+            "{} videos from {}",
+            playlist.video_count, playlist.playlist_title
+        )),
+        categories: Vec::new(),
+        source: CourseSource {
+            source_type: SourceType::Youtube,
+            origin_url: Some(playlist.playlist_url.clone()),
+            content_hash: content_hash(&snapshot),
+            imported_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        },
+    };
+    let manifest_yaml =
+        serde_yaml::to_string(&manifest).context("failed to serialize video course manifest")?;
+    fs::write(course_path.join("_course.yaml"), manifest_yaml)
+        .with_context(|| format!("failed to write _course.yaml for {course_slug}"))?;
+    fs::write(course_path.join("_progress.yaml"), "{}\n")
+        .with_context(|| format!("failed to write _progress.yaml for {course_slug}"))?;
+
+    let mut used_slugs = HashSet::new();
+    let mut sections = Vec::with_capacity(playlist.videos.len());
+    let mut video_manifest = Vec::with_capacity(playlist.videos.len());
+    for (index, video) in playlist.videos.iter().enumerate() {
+        let section_slug = unique_sibling_slug(&video.title, &mut used_slugs);
+        let canonical_path = section_slug.clone();
+        let file_path = sections_path.join(format!("{:04}-{section_slug}.md", index + 1));
+        let heading = video.title.replace(['\r', '\n'], " ");
+        let markdown = format!("# {heading}\n\n[Watch on YouTube]({})\n", video.url);
+        fs::write(&file_path, markdown)
+            .with_context(|| format!("failed to write {}", file_path.display()))?;
+        sections.push(WrittenSection {
+            title: video.title.clone(),
+            canonical_path: canonical_path.clone(),
+            vault_path: file_path.to_string_lossy().into_owned(),
+            heading_level: 1,
+            order_index: index,
+            children: Vec::new(),
+        });
+        video_manifest.push(VideoManifestEntry {
+            canonical_path,
+            video: video.clone(),
+        });
+    }
+
+    let videos_yaml =
+        serde_yaml::to_string(&video_manifest).context("failed to serialize video metadata")?;
+    fs::write(course_path.join("_videos.yaml"), videos_yaml)
+        .with_context(|| format!("failed to write video metadata for {course_slug}"))?;
+
+    Ok(WrittenCourse {
+        title: title.to_string(),
+        slug: course_slug,
+        vault_path: course_path.to_string_lossy().into_owned(),
+        sections,
+        asset_warnings: Vec::new(),
     })
 }
 
@@ -727,6 +817,45 @@ mod tests {
             written.sections[0].children[1].canonical_path,
             "rust-course/setup-2"
         );
+
+        fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
+    }
+
+    #[test]
+    fn write_video_course_creates_playlist_snapshot_and_video_metadata() {
+        let vault_path = test_vault_path();
+        let _ = fs::remove_dir_all(&vault_path);
+        let video = crate::core::models::VideoInfo {
+            video_id: "abc123".to_string(),
+            title: "Learn C#".to_string(),
+            url: "https://www.youtube.com/watch?v=abc123".to_string(),
+            embed_url: "https://www.youtube-nocookie.com/embed/abc123".to_string(),
+            duration: Some("12:34".to_string()),
+            duration_seconds: Some(754),
+            thumbnail_url: None,
+        };
+        let playlist = VideoPlaylistPreview {
+            playlist_id: "PLcourse".to_string(),
+            playlist_title: "Playlist title".to_string(),
+            playlist_url: "https://www.youtube.com/playlist?list=PLcourse".to_string(),
+            video_count: 1,
+            videos: vec![video],
+        };
+
+        let written = write_video_course(&vault_path, "Video Course", &playlist)
+            .expect("video course should be written");
+        let course_path = vault_path.join("courses/video-course");
+        let manifest: CourseManifest =
+            read_yaml_file(&course_path.join("_course.yaml")).expect("manifest");
+        let video_manifest: Vec<VideoManifestEntry> =
+            read_yaml_file(&course_path.join("_videos.yaml")).expect("video manifest");
+
+        assert_eq!(written.sections.len(), 1);
+        assert_eq!(manifest.course_type, CourseKind::Video);
+        assert_eq!(manifest.source.source_type, SourceType::Youtube);
+        assert_eq!(video_manifest[0].video.title, "Learn C#");
+        assert!(course_path.join("_source.json").is_file());
+        assert!(course_path.join("sections/0001-learn-c.md").is_file());
 
         fs::remove_dir_all(&vault_path).expect("test vault cleanup should succeed");
     }

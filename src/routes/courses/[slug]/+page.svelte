@@ -62,7 +62,9 @@
       if (first) {
         await selectSection(first);
       }
-      void checkDrift(false);
+      if (course.course_type === 'text') {
+        void checkDrift(false);
+      }
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -459,6 +461,7 @@
           />
         </details>
 
+        {#if course.course_type === 'text'}
         <details class="sidebar-disclosure source-panel">
           <summary>Source</summary>
           <div class="source-actions">
@@ -497,12 +500,13 @@
             <p class="muted">Pasted courses do not have a remote source to check.</p>
           {/if}
         </details>
+        {/if}
 
         {#if course.sections.length}
-          <p class="sidebar-nav-label">Sections</p>
+          <p class="sidebar-nav-label">{course.course_type === 'video' ? 'Videos' : 'Sections'}</p>
           <SectionTree sections={course.sections} {activeSectionId} onSelect={selectSection} />
         {:else}
-          <p class="muted">No sections indexed for this course.</p>
+          <p class="muted">No {course.course_type === 'video' ? 'videos' : 'sections'} indexed for this course.</p>
         {/if}
       </div>
     </aside>
@@ -583,7 +587,25 @@
             </div>
           {/if}
         </div>
-        <div class="markdown-body">{@html section.html}</div>
+        {#if section.video}
+          <div class="video-player-shell">
+            <div class="video-player-frame">
+              <iframe
+                src={section.video.embed_url}
+                title={section.video.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerpolicy="strict-origin-when-cross-origin"
+                allowfullscreen
+              ></iframe>
+            </div>
+            <div class="video-player-meta">
+              {#if section.video.duration}<span>{section.video.duration}</span>{/if}
+              <a href={section.video.url} target="_blank" rel="noreferrer">Open on YouTube ↗</a>
+            </div>
+          </div>
+        {:else}
+          <div class="markdown-body">{@html section.html}</div>
+        {/if}
       {:else}
         <section class="empty-state">
           <h2>Select a section</h2>

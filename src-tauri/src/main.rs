@@ -2,9 +2,9 @@ mod commands;
 mod core;
 mod db;
 
-use std::{path::PathBuf, sync::Mutex};
+use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 
-use crate::core::{assets, indexer, vault};
+use crate::core::{assets, indexer, models::VideoPlaylistPreview, vault};
 use tauri::{
     http::{header, Response, StatusCode},
     Manager,
@@ -13,6 +13,7 @@ use tauri::{
 pub struct AppState {
     vault_path: Mutex<PathBuf>,
     db_path: PathBuf,
+    playlist_cache: Mutex<HashMap<String, VideoPlaylistPreview>>,
 }
 
 impl AppState {
@@ -20,6 +21,7 @@ impl AppState {
         Self {
             vault_path: Mutex::new(vault_path),
             db_path,
+            playlist_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -63,6 +65,8 @@ fn main() {
             commands::get_app_status,
             commands::set_vault_path,
             commands::import_course,
+            commands::fetch_youtube_playlist,
+            commands::import_video_course,
             commands::delete_course,
             commands::list_courses,
             commands::get_course,

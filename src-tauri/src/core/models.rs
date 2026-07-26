@@ -20,7 +20,16 @@ pub enum SourceType {
     Github,
     Gitlab,
     Codeberg,
+    Youtube,
     Pasted,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CourseKind {
+    #[default]
+    Text,
+    Video,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -36,9 +45,38 @@ pub struct CourseSource {
 pub struct CourseManifest {
     pub title: String,
     pub slug: String,
+    #[serde(default)]
+    pub course_type: CourseKind,
     pub description: Option<String>,
     pub categories: Vec<String>,
     pub source: CourseSource,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct VideoInfo {
+    pub video_id: String,
+    pub title: String,
+    pub url: String,
+    pub embed_url: String,
+    pub duration: Option<String>,
+    pub duration_seconds: Option<u64>,
+    pub thumbnail_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct VideoPlaylistPreview {
+    pub playlist_id: String,
+    pub playlist_title: String,
+    pub playlist_url: String,
+    pub video_count: usize,
+    pub videos: Vec<VideoInfo>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct VideoManifestEntry {
+    pub canonical_path: String,
+    #[serde(flatten)]
+    pub video: VideoInfo,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -95,6 +133,7 @@ pub struct CourseListItem {
     pub id: String,
     pub slug: String,
     pub title: String,
+    pub course_type: CourseKind,
     pub description: Option<String>,
     pub categories: Vec<String>,
     pub section_count: usize,
@@ -106,6 +145,7 @@ pub struct CourseDetail {
     pub id: String,
     pub slug: String,
     pub title: String,
+    pub course_type: CourseKind,
     pub description: Option<String>,
     pub categories: Vec<String>,
     pub progress: CourseProgress,
@@ -162,6 +202,7 @@ pub struct SectionNode {
     pub id: String,
     pub canonical_path: String,
     pub title: String,
+    pub video: Option<VideoInfo>,
     pub heading_level: u8,
     pub order_index: usize,
     pub status: ProgressStatus,
@@ -175,6 +216,7 @@ pub struct SectionContent {
     pub course_id: String,
     pub canonical_path: String,
     pub title: String,
+    pub video: Option<VideoInfo>,
     pub raw_markdown: String,
     pub html: String,
 }

@@ -21,6 +21,7 @@
   let drift = $state<SourceDriftStatus | null>(null);
 
   onMount(async () => {
+    if (course.course_type === 'video') return;
     try {
       const status = await checkSourceDrift(course.id);
       if (status.changed) {
@@ -41,7 +42,11 @@
 <article class="course-card" class:course-card-list={view === 'list'}>
   <a class="course-card-link" href={`/courses/${course.slug}`}>
     <div>
-      <p class="card-kicker">{course.section_count} sections</p>
+      <p class="card-kicker">
+        {course.course_type === 'video'
+          ? `${course.section_count} video${course.section_count === 1 ? '' : 's'}`
+          : `${course.section_count} section${course.section_count === 1 ? '' : 's'}`}
+      </p>
       <div class="card-title-row">
         <h3>{course.title}</h3>
         {#if drift?.changed}

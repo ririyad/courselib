@@ -9,7 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::core::models::{CourseManifest, SourceType};
+use crate::core::models::{CourseKind, CourseManifest, SourceType, VideoInfo, VideoManifestEntry};
 
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct ReindexSummary {
@@ -158,12 +158,13 @@ fn index_course_in_tx(conn: &Connection, course_dir: &Path) -> Result<ReindexSum
     let id = course_id(&manifest.slug);
     conn.execute(
         "INSERT INTO courses
-         (id, slug, title, description, vault_path, source_type, origin_url, content_hash, imported_at, archived_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL)",
+         (id, slug, title, course_type, description, vault_path, source_type, origin_url, content_hash, imported_at, archived_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL)",
         params![
             id,
             manifest.slug,
             manifest.title,
+            course_kind_str(manifest.course_type),
             manifest.description,
             course_dir.to_string_lossy().as_ref(),
             source_type_str(manifest.source.source_type),
@@ -184,6 +185,7 @@ fn index_course_in_tx(conn: &Connection, course_dir: &Path) -> Result<ReindexSum
     }
 
     let progress = read_progress(&course_dir.join("_progress.yaml"))?;
+    let videos = read_video_manifest(&course_dir.join("_videos.yaml"))?;
     let mut sections = Vec::new();
     let sections_dir = course_dir.join("sections");
     if sections_dir.is_dir() {
@@ -194,6 +196,7 @@ fn index_course_in_tx(conn: &Connection, course_dir: &Path) -> Result<ReindexSum
             None,
             &[],
             &progress,
+            &videos,
             &mut sections,
         )?;
     }
@@ -221,6 +224,7 @@ fn index_sections_recursive(
     parent_section_id: Option<String>,
     parent_parts: &[String],
     progress: &HashMap<String, ProgressEntry>,
+    videos: &HashMap<String, VideoInfo>,
     indexed: &mut Vec<SectionRecord>,
 ) -> Result<()> {
     for (order_index, entry_path) in ordered_section_entries(dir)?.into_iter().enumerate() {
@@ -243,19 +247,30 @@ fn index_sections_recursive(
             .with_context(|| format!("failed to read {}", body_path.display()))?;
         let metadata = markdown_section_metadata(&content, canonical_parts.last().unwrap());
 
+        let video = videos.get(&canonical_path);
+        let indexed_title = video
+            .map(|item| item.title.as_str())
+            .unwrap_or(metadata.title.as_str());
         conn.execute(
             "INSERT INTO course_sections
-             (id, course_id, parent_section_id, canonical_path, vault_path, title, heading_level, order_index)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (id, course_id, parent_section_id, canonical_path, vault_path, title, heading_level, order_index,
+              video_id, video_url, video_embed_url, video_duration, video_duration_seconds, video_thumbnail_url)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 section_id,
                 course_id(course_slug),
                 parent_section_id,
                 canonical_path,
                 body_path.to_string_lossy().as_ref(),
-                metadata.title,
+                indexed_title,
                 metadata.heading_level,
                 order_index as i64,
+                video.map(|item| item.video_id.as_str()),
+                video.map(|item| item.url.as_str()),
+                video.map(|item| item.embed_url.as_str()),
+                video.and_then(|item| item.duration.as_deref()),
+                video.and_then(|item| item.duration_seconds).map(|value| value as i64),
+                video.and_then(|item| item.thumbnail_url.as_deref()),
             ],
         )
         .with_context(|| format!("failed to index section {canonical_path}"))?;
@@ -276,7 +291,7 @@ fn index_sections_recursive(
         indexed.push(SectionRecord {
             id: section_id.clone(),
             canonical_path: canonical_path.clone(),
-            title: metadata.title,
+            title: indexed_title.to_string(),
             content,
         });
 
@@ -288,6 +303,7 @@ fn index_sections_recursive(
                 Some(section_id),
                 &canonical_parts,
                 progress,
+                videos,
                 indexed,
             )?;
         }
@@ -456,6 +472,17 @@ fn read_progress(path: &Path) -> Result<HashMap<String, ProgressEntry>> {
     read_yaml(path)
 }
 
+fn read_video_manifest(path: &Path) -> Result<HashMap<String, VideoInfo>> {
+    if !path.is_file() {
+        return Ok(HashMap::new());
+    }
+    let entries: Vec<VideoManifestEntry> = read_yaml(path)?;
+    Ok(entries
+        .into_iter()
+        .map(|entry| (entry.canonical_path, entry.video))
+        .collect())
+}
+
 fn read_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
     let contents =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
@@ -464,20 +491,24 @@ fn read_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
 
 fn slug_from_prefixed_name(name: &str) -> String {
     let without_ext = name.strip_suffix(".md").unwrap_or(name);
-    if without_ext.len() > 3
-        && without_ext.as_bytes()[0].is_ascii_digit()
-        && without_ext.as_bytes()[1].is_ascii_digit()
-        && without_ext.as_bytes()[2] == b'-'
-    {
-        without_ext[3..].to_string()
+    let prefix_len = without_ext
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if prefix_len > 0 && without_ext.as_bytes().get(prefix_len) == Some(&b'-') {
+        without_ext[prefix_len + 1..].to_string()
     } else {
         without_ext.to_string()
     }
 }
 
 fn order_from_name(name: &str) -> usize {
-    name.get(0..2)
-        .and_then(|prefix| prefix.parse::<usize>().ok())
+    let prefix = name
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    name.get(..prefix)
+        .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(usize::MAX)
 }
 
@@ -504,7 +535,15 @@ fn source_type_str(source_type: SourceType) -> &'static str {
         SourceType::Github => "github",
         SourceType::Gitlab => "gitlab",
         SourceType::Codeberg => "codeberg",
+        SourceType::Youtube => "youtube",
         SourceType::Pasted => "pasted",
+    }
+}
+
+fn course_kind_str(course_type: CourseKind) -> &'static str {
+    match course_type {
+        CourseKind::Text => "text",
+        CourseKind::Video => "video",
     }
 }
 

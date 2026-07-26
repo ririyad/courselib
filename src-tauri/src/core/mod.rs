@@ -7,3 +7,4 @@ pub mod parser;
 pub mod slugs;
 pub mod source_fetch;
 pub mod vault;
+pub mod youtube;

@@ -53,6 +53,25 @@ export type Category = {
 };
 
 export type ProgressStatus = 'not_started' | 'in_progress' | 'completed';
+export type CourseKind = 'text' | 'video';
+
+export type VideoInfo = {
+  video_id: string;
+  title: string;
+  url: string;
+  embed_url: string;
+  duration: string | null;
+  duration_seconds: number | null;
+  thumbnail_url: string | null;
+};
+
+export type VideoPlaylistPreview = {
+  playlist_id: string;
+  playlist_title: string;
+  playlist_url: string;
+  video_count: number;
+  videos: VideoInfo[];
+};
 
 export type CourseProgress = {
   total_sections: number;
@@ -66,6 +85,7 @@ export type CourseListItem = {
   id: string;
   slug: string;
   title: string;
+  course_type: CourseKind;
   description: string | null;
   categories: string[];
   section_count: number;
@@ -76,6 +96,7 @@ export type SectionNode = {
   id: string;
   canonical_path: string;
   title: string;
+  video: VideoInfo | null;
   heading_level: number;
   order_index: number;
   status: ProgressStatus;
@@ -87,6 +108,7 @@ export type CourseDetail = {
   id: string;
   slug: string;
   title: string;
+  course_type: CourseKind;
   description: string | null;
   categories: string[];
   progress: CourseProgress;
@@ -116,6 +138,7 @@ export type SectionContent = {
   course_id: string;
   canonical_path: string;
   title: string;
+  video: VideoInfo | null;
   raw_markdown: string;
   html: string;
 };
@@ -157,6 +180,14 @@ export function setVaultPath(path: string) {
 
 export function importCourse(source: ImportCourseSource) {
   return invoke<WrittenCourse>('import_course', { source });
+}
+
+export function fetchYoutubePlaylist(playlistUrl: string) {
+  return invoke<VideoPlaylistPreview>('fetch_youtube_playlist', { playlistUrl });
+}
+
+export function importVideoCourse(title: string, playlistUrl: string) {
+  return invoke<WrittenCourse>('import_video_course', { title, playlistUrl });
 }
 
 export function deleteCourse(courseId: string) {

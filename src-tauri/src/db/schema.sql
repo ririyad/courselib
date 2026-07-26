@@ -2,9 +2,10 @@ CREATE TABLE IF NOT EXISTS courses (
     id TEXT PRIMARY KEY,
     slug TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
+    course_type TEXT NOT NULL DEFAULT 'text' CHECK (course_type IN ('text','video')),
     description TEXT,
     vault_path TEXT NOT NULL,
-    source_type TEXT CHECK (source_type IN ('github','gitlab','codeberg','pasted')),
+    source_type TEXT CHECK (source_type IN ('github','gitlab','codeberg','youtube','pasted')),
     origin_url TEXT,
     content_hash TEXT,
     imported_at TEXT,
@@ -32,6 +33,12 @@ CREATE TABLE IF NOT EXISTS course_sections (
     title TEXT NOT NULL,
     heading_level INTEGER NOT NULL,
     order_index INTEGER NOT NULL,
+    video_id TEXT,
+    video_url TEXT,
+    video_embed_url TEXT,
+    video_duration TEXT,
+    video_duration_seconds INTEGER,
+    video_thumbnail_url TEXT,
     UNIQUE (course_id, canonical_path)
 );
 
