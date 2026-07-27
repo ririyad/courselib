@@ -1,6 +1,6 @@
 [package]
 name = "courselib"
-version = "0.7.1"
+version = "0.7.2"
 description = "Local-first personal knowledge library"
 authors = ["CourseLib"]
 edition = "2021"
