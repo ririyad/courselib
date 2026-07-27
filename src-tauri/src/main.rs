@@ -11,7 +11,7 @@ use tauri::{
 };
 
 #[cfg(not(dev))]
-use tauri::{ipc::CapabilityBuilder, Url};
+use tauri::Url;
 
 pub struct AppState {
     vault_path: Mutex<PathBuf>,
@@ -79,16 +79,9 @@ fn main() {
 
             #[cfg(not(dev))]
             {
+                // The matching loopback ACL is declared statically in
+                // capabilities/default.json so it is resolved before IPC starts.
                 let url: Url = format!("http://127.0.0.1:{localhost_port}").parse()?;
-                app.add_capability(
-                    CapabilityBuilder::new("loopback-app")
-                        .remote(url.to_string())
-                        .local(false)
-                        .window("main")
-                        .permission("core:default")
-                        .permission("dialog:default")
-                        .permission("app-commands"),
-                )?;
                 app.get_webview_window("main")
                     .ok_or_else(|| anyhow::anyhow!("main window was not created"))?
                     .navigate(url)?;
